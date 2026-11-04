@@ -4,7 +4,7 @@ import * as jwtConfig from '../../config/jwt.config';
 import { AppError } from '../../common/appError';
 import { AuthRepository, authRepository } from './auth.responsitory';
 import SessionModel from './model/session.model';
-import {AuditLogService } from'./log/auth.log.service'
+import { AuditLogService } from './log/auth.log.service'
 
 export interface ClientContext {
   ipAddress?: string;
@@ -29,7 +29,7 @@ export const hashRefreshToken = (token: string): string => {
 
 function parseDeviceName(userAgent: string = ''): string {
   if (!userAgent || userAgent === 'Unknown') return 'Unknown Device';
-  
+
   let browser = 'Browser';
   if (userAgent.includes('Firefox')) browser = 'Firefox';
   else if (userAgent.includes('Edg')) browser = 'Edge';
@@ -56,7 +56,7 @@ function userObjectId(id?: string | Types.ObjectId) {
 }
 
 export class AuthService {
-  constructor(private repository: AuthRepository = authRepository) {}
+  constructor(private repository: AuthRepository = authRepository) { }
 
   async register(userData: any, context?: ClientContext) {
     const { email, password, fullName } = userData;
@@ -129,7 +129,7 @@ export class AuthService {
       });
       throw AppError.Unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
     }
-    
+
     const deviceName = parseDeviceName(context?.userAgent);
     const userAgent = context?.userAgent || 'Unknown';
     const ipAddress = context?.ipAddress || 'Unknown';
@@ -138,8 +138,8 @@ export class AuthService {
       userId: user.id,
       isRevoked: false,
       $or: [
-        { deviceName:deviceName },
-        { userAgent:userAgent },
+        { deviceName: deviceName },
+        { userAgent: userAgent },
       ],
     });
 
@@ -209,8 +209,8 @@ export class AuthService {
       refreshToken,
       sessionId: session._id,
     };
-  
-    
+
+
   }
 
   async verifyRefreshToken(refreshToken: string, context?: ClientContext) {
@@ -235,7 +235,7 @@ export class AuthService {
     // Tìm session theo sessionId trong token hoặc theo refreshToken chuỗi
     const session = await SessionModel.findOne({
       $or: [
-        { refreshToken : refreshTokenHashed },
+        { refreshToken: refreshTokenHashed },
         ...(decoded.sessionId ? [{ _id: decoded.sessionId }] : []),
       ],
     });
@@ -324,7 +324,7 @@ export class AuthService {
       sessionId: session._id,
     };
   }
-}
+
   /**
    * Quy trình Logout chuẩn 6 bước:
    * 1. Xác minh Access Token hoặc Refresh Token hợp lệ (đã làm ở middleware hoặc phân tích tại đây).
@@ -334,209 +334,177 @@ export class AuthService {
    * 5. Ghi audit log.
    * 6. Trả về kết quả để controller xóa cookie/token khỏi client.
    */
-//   async logout(
-//     target: string | LogoutParams,
-//     refreshTokenOrContext?: string | ClientContext,
-//     optionalContext?: ClientContext
-//   ) {
-//     let userId: string | undefined;
-//     let sessionId: string | undefined;
-//     let jti: string | undefined;
-//     let currentToken: string | undefined;
-//     let refreshToken: string | undefined;
-//     let context: ClientContext | undefined;
+  async logout(
+  target: string | LogoutParams,
+  refreshTokenOrContext ?: string | ClientContext,
+  optionalContext ?: ClientContext
+) {
+  let userId: string | undefined;
+  let sessionId: string | undefined;
+  let jti: string | undefined;
+  let currentToken: string | undefined;
+  let refreshToken: string | undefined;
+  let context: ClientContext | undefined;
 
-//     if (typeof target === 'string') {
-//       userId = target;
-//       refreshToken = typeof refreshTokenOrContext === 'string' ? refreshTokenOrContext : undefined;
-//       context = typeof refreshTokenOrContext === 'object' ? (refreshTokenOrContext as ClientContext) : optionalContext;
-//     } else {
-//       userId = target.userId;
-//       sessionId = target.sessionId;
-//       jti = target.jti;
-//       currentToken = target.currentToken;
-//       refreshToken = target.refreshToken;
-//       context = refreshTokenOrContext as ClientContext;
-//     }
+  if (typeof target === 'string') {
+    userId = target;
+    refreshToken = typeof refreshTokenOrContext === 'string' ? refreshTokenOrContext : undefined;
+    context = typeof refreshTokenOrContext === 'object' ? (refreshTokenOrContext as ClientContext) : optionalContext;
+  } else {
+    userId = target.userId;
+    sessionId = target.sessionId;
+    jti = target.jti;
+    currentToken = target.currentToken;
+    refreshToken = target.refreshToken;
+    context = refreshTokenOrContext as ClientContext;
+  }
 
-//     // 1. Phân tích thêm thông tin từ Access Token nếu chưa có
-//     if (currentToken && (!jti || !sessionId || !userId)) {
-//       const decodedAccess = jwtConfig.decodeAccessToken(currentToken);
-//       if (decodedAccess) {
-//         if (!jti) jti = decodedAccess.jti;
-//         if (!sessionId) sessionId = decodedAccess.sessionId;
-//         if (!userId) userId = decodedAccess.id;
-//       }
-//     }
+  // 1. Phân tích thêm thông tin từ Access Token nếu chưa có
+  if (currentToken && (!jti || !sessionId || !userId)) {
+    const decodedAccess = jwtConfig.decodeAccessToken(currentToken);
+    if (decodedAccess) {
+      if (!jti) jti = decodedAccess.jti;
+      if (!sessionId) sessionId = decodedAccess.sessionId;
+      if (!userId) userId = decodedAccess.id;
+    }
+  }
 
-//     // 1b. Phân tích thêm thông tin từ Refresh Token nếu chưa có
-//     if (refreshToken && (!sessionId || !userId)) {
-//       const decodedRefresh = jwtConfig.decodeRefreshToken(refreshToken);
-//       if (decodedRefresh) {
-//         if (!sessionId) sessionId = decodedRefresh.sessionId;
-//         if (!userId) userId = decodedRefresh.id;
-//       }
-//     }
+  // 1b. Phân tích thêm thông tin từ Refresh Token nếu chưa có
+  if (refreshToken && (!sessionId || !userId)) {
+    const decodedRefresh = jwtConfig.decodeRefreshToken(refreshToken);
+    if (decodedRefresh) {
+      if (!sessionId) sessionId = decodedRefresh.sessionId;
+      if (!userId) userId = decodedRefresh.id;
+    }
+  }
 
-//     // 2. Xác định đúng sessionId trong Database
-//     let session = null;
-//     if (sessionId) {
-//       session = await SessionModel.findById(sessionId);
-//     }
-//     if (!session && refreshToken) {
-//       session = await SessionModel.findOne({ refreshToken });
-//     }
+  // 2. Xác định đúng sessionId trong Database
+  let session = null;
+  if (sessionId) {
+    session = await SessionModel.findById(sessionId);
+  }
+  if (!session && refreshToken) {
+    session = await SessionModel.findOne({ refreshToken });
+  }
 
-//     // 3. Đặt session.isRevoked = true
-//     if (session) {
-//       sessionId = session._id.toString();
-//       userId = userId || session.userId.toString();
-//       session.isRevoked = true;
-//       await session.save();
-//     } else if (sessionId) {
-//       await SessionModel.updateOne({ _id: sessionId }, { $set: { isRevoked: true } });
-//     }
+  // 3. Đặt session.isRevoked = true
+  if (session) {
+    sessionId = session._id.toString();
+    userId = userId || session.userId.toString();
+    session.isRevoked = true;
+    await session.save();
+  } else if (sessionId) {
+    await SessionModel.updateOne({ _id: sessionId }, { $set: { isRevoked: true } });
+  }
 
-//     // 4. Đưa jti của Access Token hiện tại vào Blacklist (nếu có jti)
-//     if (jti) {
-//       let expDate = new Date(Date.now() + 15 * 60 * 1000);
-//       if (currentToken) {
-//         const decoded = jwtConfig.decodeAccessToken(currentToken);
-//         if (decoded?.exp) {
-//           expDate = new Date(decoded.exp * 1000);
-//         }
-//       }
+  // 5. Ghi Audit Log
+  await AuditLogService.record({
+    userId: userObjectId(userId),
+    action: 'LOGOUT',
+    status: 'SUCCESS',
+    ipAddress: context?.ipAddress,
+    userAgent: context?.userAgent,
+    details: {
+      sessionId: session?._id || sessionId || 'UNKNOWN_SESSION',
+      deviceName: session?.deviceName || parseDeviceName(context?.userAgent),
+      jti: jti || 'NONE',
+    },
+  });
 
-//       await BlacklistedTokenModel.create({
-//         jti,
-//         userId: userObjectId(userId),
-//         sessionId: userObjectId(sessionId),
-//         reason: 'LOGOUT',
-//         expiresAt: expDate,
-//       }).catch(() => {}); // Bỏ qua nếu đã blacklist trước đó
-//     }
+  return {
+    message: 'Logged out successfully',
+    sessionId: session?._id || sessionId,
+  };
+}
 
-//     // 5. Ghi Audit Log
-//     await AuditLogService.record({
-//       userId: userObjectId(userId),
-//       action: 'LOGOUT',
-//       status: 'SUCCESS',
-//       ipAddress: context?.ipAddress,
-//       userAgent: context?.userAgent,
-//       details: {
-//         sessionId: session?._id || sessionId || 'UNKNOWN_SESSION',
-//         deviceName: session?.deviceName || parseDeviceName(context?.userAgent),
-//         jti: jti || 'NONE',
-//       },
-//     });
+  /**
+   * C. Logout tất cả thiết bị
+   * Đặt isRevoked = true cho mọi session đang hoạt động của người dùng.
+   * Các Access Token và Refresh Token gắn với các session đó sẽ bị từ chối ở những lần request/refresh tiếp theo.
+   */
+  async logoutAllDevices(userId: string, currentToken ?: string, context ?: ClientContext) {
+  if (!userId) {
+    throw AppError.Unauthorized('User not identified', 'UNAUTHORIZED');
+  }
 
-//     return {
-//       message: 'Logged out successfully',
-//       sessionId: session?._id || sessionId,
-//     };
-//   }
+  // 1. Đặt isRevoked = true cho mọi session đang hoạt động của người dùng
+  const result = await SessionModel.updateMany(
+    { userId, isRevoked: false },
+    { $set: { isRevoked: true } }
+  );
 
-//   /**
-//    * C. Logout tất cả thiết bị
-//    * Đặt isRevoked = true cho mọi session đang hoạt động của người dùng.
-//    * Các Access Token và Refresh Token gắn với các session đó sẽ bị từ chối ở những lần request/refresh tiếp theo.
-//    */
-//   async logoutAllDevices(userId: string, currentToken?: string, context?: ClientContext) {
-//     if (!userId) {
-//       throw AppError.Unauthorized('User not identified', 'UNAUTHORIZED');
-//     }
+  // 3. Ghi Audit Log
+  await AuditLogService.record({
+    userId: userObjectId(userId),
+    action: 'LOGOUT_ALL',
+    status: 'SUCCESS',
+    ipAddress: context?.ipAddress,
+    userAgent: context?.userAgent,
+    details: {
+      revokedSessionCount: result.modifiedCount,
+    },
+  });
 
-//     // 1. Đặt isRevoked = true cho mọi session đang hoạt động của người dùng
-//     const result = await SessionModel.updateMany(
-//       { userId, isRevoked: false },
-//       { $set: { isRevoked: true } }
-//     );
+  return {
+    message: `All ${result.modifiedCount} active session(s) have been revoked successfully`,
+    revokedCount: result.modifiedCount,
+  };
+}
 
-//     // 2. Blacklist Access Token hiện tại nếu có
-//     if (currentToken) {
-//       const decoded = jwtConfig.decodeAccessToken(currentToken);
-//       if (decoded?.jti) {
-//         const expDate = decoded.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 15 * 60 * 1000);
-//         await BlacklistedTokenModel.create({
-//           jti: decoded.jti,
-//           userId: userObjectId(userId),
-//           reason: 'LOGOUT_ALL',
-//           expiresAt: expDate,
-//         }).catch(() => {});
-//       }
-//     }
+  async getUserSessions(userId: string) {
+  return SessionModel.find({ userId, isRevoked: false })
+    .select('_id ipAddress userAgent deviceName createdAt updatedAt')
+    .sort({ updatedAt: -1 })
+    .lean();
+}
 
-//     // 3. Ghi Audit Log
-//     await AuditLogService.record({
-//       userId: userObjectId(userId),
-//       action: 'LOGOUT_ALL',
-//       status: 'SUCCESS',
-//       ipAddress: context?.ipAddress,
-//       userAgent: context?.userAgent,
-//       details: {
-//         revokedSessionCount: result.modifiedCount,
-//       },
-//     });
+  async revokeSession(userId: string, sessionId: string, context ?: ClientContext) {
+  const session = await SessionModel.findOne({ _id: sessionId, userId });
+  if (!session) {
+    throw AppError.NotFound('Session not found', 'SESSION_NOT_FOUND');
+  }
 
-//     return {
-//       message: `All ${result.modifiedCount} active session(s) have been revoked successfully`,
-//       revokedCount: result.modifiedCount,
-//     };
-//   }
+  session.isRevoked = true;
+  await session.save();
 
-//   async getUserSessions(userId: string) {
-//     return SessionModel.find({ userId, isRevoked: false })
-//       .select('_id ipAddress userAgent deviceName createdAt updatedAt')
-//       .sort({ updatedAt: -1 })
-//       .lean();
-//   }
+  await AuditLogService.record({
+    userId: userObjectId(userId),
+    action: 'SESSION_REVOKED',
+    status: 'SUCCESS',
+    ipAddress: context?.ipAddress,
+    userAgent: context?.userAgent,
+    details: { revokedSessionId: sessionId, deviceName: session.deviceName },
+  });
 
-//   async revokeSession(userId: string, sessionId: string, context?: ClientContext) {
-//     const session = await SessionModel.findOne({ _id: sessionId, userId });
-//     if (!session) {
-//       throw AppError.NotFound('Session not found', 'SESSION_NOT_FOUND');
-//     }
+  return { message: 'Session revoked successfully' };
+}
 
-//     session.isRevoked = true;
-//     await session.save();
+  async revokeAllOtherSessions(userId: string, currentRefreshToken ?: string, currentSessionId ?: string, context ?: ClientContext) {
+  const query: any = { userId, isRevoked: false };
+  if (currentSessionId) {
+    query._id = { $ne: currentSessionId };
+  } else if (currentRefreshToken) {
+    query.refreshToken = { $ne: currentRefreshToken };
+  }
 
-//     await AuditLogService.record({
-//       userId: userObjectId(userId),
-//       action: 'SESSION_REVOKED',
-//       status: 'SUCCESS',
-//       ipAddress: context?.ipAddress,
-//       userAgent: context?.userAgent,
-//       details: { revokedSessionId: sessionId, deviceName: session.deviceName },
-//     });
+  const result = await SessionModel.updateMany(query, { $set: { isRevoked: true } });
 
-//     return { message: 'Session revoked successfully' };
-//   }
+  await AuditLogService.record({
+    userId: userObjectId(userId),
+    action: 'ALL_OTHER_SESSIONS_REVOKED',
+    status: 'SUCCESS',
+    ipAddress: context?.ipAddress,
+    userAgent: context?.userAgent,
+    details: { revokedCount: result.modifiedCount },
+  });
 
-//   async revokeAllOtherSessions(userId: string, currentRefreshToken?: string, currentSessionId?: string, context?: ClientContext) {
-//     const query: any = { userId, isRevoked: false };
-//     if (currentSessionId) {
-//       query._id = { $ne: currentSessionId };
-//     } else if (currentRefreshToken) {
-//       query.refreshToken = { $ne: currentRefreshToken };
-//     }
+  return { message: `Revoked ${result.modifiedCount} other active sessions` };
+}
 
-//     const result = await SessionModel.updateMany(query, { $set: { isRevoked: true } });
+  async getAuditLogs(userId: string, limit = 50) {
+  return AuditLogService.getUserLogs(userId, limit);
+}
+}
 
-//     await AuditLogService.record({
-//       userId: userObjectId(userId),
-//       action: 'ALL_OTHER_SESSIONS_REVOKED',
-//       status: 'SUCCESS',
-//       ipAddress: context?.ipAddress,
-//       userAgent: context?.userAgent,
-//       details: { revokedCount: result.modifiedCount },
-//     });
-
-//     return { message: `Revoked ${result.modifiedCount} other active sessions` };
-//   }
-
-//   async getAuditLogs(userId: string, limit = 50) {
-//     return AuditLogService.getUserLogs(userId, limit);
-//   }
-// }
 
 export const authService = new AuthService();
