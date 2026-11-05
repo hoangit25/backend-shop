@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import * as jwtConfig from '../../config/jwt.config';
 import { AppError } from '../../common/appError';
 import { AuthRepository, authRepository } from './auth.responsitory';
+import { env } from '../../config/env.config';
 import SessionModel from './model/session.model';
 import { AuditLogService } from './log/auth.log.service'
 
@@ -57,25 +58,37 @@ function userObjectId(id?: string | Types.ObjectId) {
 }
 
 
-const user = process.env.USER_EMAIL;
-const pass = process.env.USER_PASSWORD?.replace(/\s+/g, '');
+const getTransporter = () => {
+  const senderEmail = process.env.USER_EMAIL || env.USER_EMAIL;
+  const rawPassword = process.env.USER_PASSWORD || env.USER_PASSWORD;
+  const senderPassword = rawPassword?.replace(/\s+/g, '');
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user, pass },
-});
+  if (!senderEmail || !senderPassword) {
+    throw AppError.Internal(
+      'Cấu hình email máy chủ (USER_EMAIL hoặc USER_PASSWORD) chưa được thiết lập.',
+      'EMAIL_CONFIG_MISSING'
+    );
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: senderEmail,
+      pass: senderPassword,
+    },
+  });
+
+  return { senderEmail, transporter };
+};
 
 const sendOtpEmail = async (toEmail: string, otpCode: string) => {
-  if (!user || !pass) {
-    console.warn('USER_EMAIL or USER_PASSWORD not set in env, skip sending email');
-    return;
-  }
+  const { senderEmail, transporter } = getTransporter();
 
   // Thêm timestamp và mã OTP vào Subject để Gmail KHÔNG gom thành 1 luồng tin nhắn cũ (Conversation Threading)
   const timeString = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  await transporter.sendMail({
-    from: `"Shop Support" <${user}>`,
+  const info = await transporter.sendMail({
+    from: `"Shop Support" <${senderEmail}>`,
     to: toEmail,
     subject: `[${otpCode}] Mã xác thực OTP đặt lại mật khẩu (${timeString})`,
     html: `
@@ -95,6 +108,8 @@ const sendOtpEmail = async (toEmail: string, otpCode: string) => {
       </div>
     `,
   });
+
+  console.log(`[Email OTP] Đã gửi OTP (${otpCode}) thành công tới: ${toEmail}. Message ID: ${info.messageId}`);
 };
 
 export class AuthService {

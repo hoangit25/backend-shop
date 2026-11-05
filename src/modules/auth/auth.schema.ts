@@ -7,7 +7,7 @@ export const registerBodySchema = z.object({
     .min(6, 'Password must be at least 6 characters')
     .max(20, 'Password cannot exceed 20 characters')
     .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,20}$/,
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d\s]).{6,20}$/,
       'Password must contain uppercase, lowercase, number, and special character'
     ),
   fullName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -51,7 +51,7 @@ export const resetPasswordBodySchema = z.object({
     .min(6, 'Password must be at least 6 characters')
     .max(20, 'Password cannot exceed 20 characters')
     .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,20}$/,
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d\s]).{6,20}$/,
       'Password must contain uppercase, lowercase, number, and special character'
     ),
 });
