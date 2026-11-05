@@ -1,3 +1,4 @@
+import nodemailer from 'nodemailer';
 import mongoose, { Types } from 'mongoose';
 import crypto from 'node:crypto';
 import * as jwtConfig from '../../config/jwt.config';
@@ -54,6 +55,40 @@ function userObjectId(id?: string | Types.ObjectId) {
     return undefined;
   }
 }
+
+
+const sendPasswordResetEmail = async (toEmail: string, resetUrl: string) => {
+  const user = process.env.USER_EMAIL;
+  const pass = process.env.USER_PASSWORD;
+  if (!user || !pass) {
+    console.warn('USER_EMAIL or USER_PASSWORD not set in env, skip sending email');
+    return;
+  }
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user, pass },
+  });
+
+  await transporter.sendMail({
+    from: `"Shop Support" <${user}>`,
+    to: toEmail,
+    subject: 'Khôi phục mật khẩu tài khoản của bạn',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+        <h2 style="color: #F15A24; text-align: center;">Yêu cầu đặt lại mật khẩu</h2>
+        <p>Xin chào,</p>
+        <p>Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản liên kết với email này.</p>
+        <p>Vui lòng click vào liên kết bên dưới để tạo mật khẩu mới (Liên kết có hiệu lực trong vòng <b>15 phút</b>):</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" style="background-color: #F15A24; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            Đặt lại mật khẩu
+          </a>
+        </div>
+        <p style="color: #666; font-size: 13px;">Nếu bạn không gửi yêu cầu này, xin vui lòng bỏ qua email. Mật khẩu của bạn vẫn được giữ an toàn.</p>
+      </div>
+    `,
+  });
+};
 
 export class AuthService {
   constructor(private repository: AuthRepository = authRepository) { }
@@ -211,6 +246,81 @@ export class AuthService {
     };
 
 
+  }
+
+  
+  async forgotPassword(email: string, context?: ClientContext) {
+    if (!email) {
+      throw AppError.BadRequest('Email is required', 'MISSING_EMAIL');
+    }
+
+    const user = await this.repository.findByEmail(email);
+    if (!user || !user.isActive) {
+      // Bảo mật: không báo cho attacker biết email có tồn tại hay không
+      return { message: 'Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi đi.' };
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    user.passwordResetToken = hashedToken;
+    user.passwordResetExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 phút
+    await user.save();
+
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const resetUrl = `${clientUrl}/reset-password?token=${resetToken}`;
+
+    try {
+      await sendPasswordResetEmail(user.email, resetUrl);
+    } catch (err) {
+      console.error('Error sending reset email:', err);
+    }
+
+    await AuditLogService.record({
+      userId: user._id,
+      email: user.email,
+      action: 'FORGOT_PASSWORD_REQUEST',
+      status: 'SUCCESS',
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+    });
+
+    return { message: 'Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi đi.' };
+  }
+
+  async resetPassword(token: string, newPassword: string, context?: ClientContext) {
+    if (!token || !newPassword) {
+      throw AppError.BadRequest('Token and new password are required', 'MISSING_FIELDS');
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+    const user = await this.repository.findByResetToken(hashedToken);
+
+    if (!user) {
+      throw AppError.BadRequest('Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.', 'INVALID_TOKEN');
+    }
+
+    user.password = newPassword;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    // Hủy toàn bộ phiên đăng nhập của tài khoản này trên tất cả các thiết bị
+    await SessionModel.updateMany(
+      { userId: user._id, isRevoked: false },
+      { $set: { isRevoked: true } }
+    );
+
+    await AuditLogService.record({
+      userId: user._id,
+      email: user.email,
+      action: 'RESET_PASSWORD_SUCCESS',
+      status: 'SUCCESS',
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+    });
+
+    return { message: 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.' };
   }
 
   async verifyRefreshToken(refreshToken: string, context?: ClientContext) {

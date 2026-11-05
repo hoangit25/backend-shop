@@ -10,6 +10,15 @@ export class AuthRepository extends BaseRepository<IUser> {
     return this.findOne({ email, deleted: false });
   }
 
+  async findByResetToken(hashedToken: string) {
+    return this.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: new Date() },
+      deleted: false,
+      isActive: true,
+    });
+  }
+
   async findByIdActive(id: string) {
     return this.findOne({ _id: id, deleted: false });
   }
