@@ -13,6 +13,8 @@ export interface IUser extends Document {
   isActive: boolean;
   deleted: boolean;
   deletedAt: Date | null;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
@@ -82,6 +84,14 @@ const userSchema = new Schema(
       default: false,
     },
     deletedAt: {
+      type: Date,
+      default: null,
+    },
+    passwordResetToken: {
+      type: String,
+      default: null,
+    },
+    passwordResetExpires: {
       type: Date,
       default: null,
     },
