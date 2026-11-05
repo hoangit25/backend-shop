@@ -36,6 +36,7 @@ export const forgotPasswordBodySchema = z.object({
   email: z.string().min(1, 'Email cannot be empty').email('Invalid email format'),
 });
 
+
 export const verifyOtpBodySchema = z.object({
   email: z.string().min(1, 'Email cannot be empty').email('Invalid email format'),
   otp: z.string().length(6, 'Mã OTP phải gồm 6 chữ số').regex(/^\d{6}$/, 'Mã OTP chỉ bao gồm các chữ số'),
@@ -44,6 +45,7 @@ export const verifyOtpBodySchema = z.object({
 export const resetPasswordBodySchema = z.object({
   email: z.string().min(1, 'Email cannot be empty').email('Invalid email format'),
   resetToken: z.string().min(1, 'Reset token is required'),
+
   password: z
     .string()
     .min(6, 'Password must be at least 6 characters')
@@ -58,9 +60,11 @@ export const forgotPasswordSchema = z.object({
   body: forgotPasswordBodySchema,
 });
 
+
 export const verifyOtpSchema = z.object({
   body: verifyOtpBodySchema,
 });
+
 
 export const resetPasswordSchema = z.object({
   body: resetPasswordBodySchema,

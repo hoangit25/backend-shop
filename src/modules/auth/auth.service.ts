@@ -57,6 +57,7 @@ function userObjectId(id?: string | Types.ObjectId) {
 }
 
 const sendOtpEmail = async (toEmail: string, otpCode: string) => {
+
   const user = process.env.USER_EMAIL;
   const pass = process.env.USER_PASSWORD;
   if (!user || !pass) {
@@ -249,6 +250,7 @@ export class AuthService {
 
   }
 
+
   async forgotPassword(email: string, context?: ClientContext) {
     if (!email) {
       throw AppError.BadRequest('Email is required', 'MISSING_EMAIL');
@@ -256,6 +258,7 @@ export class AuthService {
 
     const user = await this.repository.findByEmail(email);
     if (!user || !user.isActive) {
+
       return { message: 'Nếu email tồn tại trong hệ thống, mã xác thực OTP đã được gửi đi.' };
     }
 

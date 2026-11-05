@@ -10,6 +10,7 @@ export class AuthRepository extends BaseRepository<IUser> {
     return this.findOne({ email, deleted: false });
   }
 
+
   async findByResetOtp(email: string, hashedOtp: string) {
     return this.findOne({
       email,
