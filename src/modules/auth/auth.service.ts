@@ -56,27 +56,32 @@ function userObjectId(id?: string | Types.ObjectId) {
   }
 }
 
-const sendOtpEmail = async (toEmail: string, otpCode: string) => {
 
-  const user = process.env.USER_EMAIL;
-  const pass = process.env.USER_PASSWORD;
+const user = process.env.USER_EMAIL;
+const pass = process.env.USER_PASSWORD?.replace(/\s+/g, '');
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: { user, pass },
+});
+
+const sendOtpEmail = async (toEmail: string, otpCode: string) => {
   if (!user || !pass) {
     console.warn('USER_EMAIL or USER_PASSWORD not set in env, skip sending email');
     return;
   }
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user, pass },
-  });
+
+  // Thêm timestamp và mã OTP vào Subject để Gmail KHÔNG gom thành 1 luồng tin nhắn cũ (Conversation Threading)
+  const timeString = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   await transporter.sendMail({
     from: `"Shop Support" <${user}>`,
     to: toEmail,
-    subject: 'Mã xác thực (OTP) đặt lại mật khẩu',
+    subject: `[${otpCode}] Mã xác thực OTP đặt lại mật khẩu (${timeString})`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
         <h2 style="color: #F15A24; text-align: center; margin-bottom: 8px;">Xác thực tài khoản</h2>
-        <p style="color: #4b5563; font-size: 15px; text-align: center;">Bạn nhận được yêu cầu đặt lại mật khẩu. Dưới đây là mã xác thực OTP của bạn:</p>
+        <p style="color: #4b5563; font-size: 15px; text-align: center;">Bạn nhận được yêu cầu đặt lại mật khẩu lúc <b>${timeString}</b>. Dưới đây là mã xác thực OTP của bạn:</p>
         <div style="text-align: center; margin: 28px 0;">
           <span style="display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1f2937; background: #f3f4f6; padding: 14px 28px; border-radius: 10px; border: 1px dashed #F15A24;">
             ${otpCode}
@@ -257,9 +262,12 @@ export class AuthService {
     }
 
     const user = await this.repository.findByEmail(email);
-    if (!user || !user.isActive) {
+    if (!user) {
+      throw AppError.NotFound('Email này chưa được đăng ký tài khoản trong hệ thống.', 'USER_NOT_FOUND');
+    }
 
-      return { message: 'Nếu email tồn tại trong hệ thống, mã xác thực OTP đã được gửi đi.' };
+    if (!user.isActive) {
+      throw AppError.Forbidden('Tài khoản này hiện đang bị tạm khóa.', 'ACCOUNT_SUSPENDED');
     }
 
     // 1. Tạo OTP 6 chữ số ngẫu nhiên
@@ -277,6 +285,7 @@ export class AuthService {
       await sendOtpEmail(user.email, otp);
     } catch (err) {
       console.error('Error sending OTP email:', err);
+      throw AppError.Internal('Không thể gửi mã xác thực tới email. Vui lòng thử lại sau.', 'SEND_EMAIL_FAILED');
     }
 
     await AuditLogService.record({
