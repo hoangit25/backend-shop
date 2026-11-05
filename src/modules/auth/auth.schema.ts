@@ -30,3 +30,42 @@ export const loginSchema = z.object({
 
 export type RegisterDto = z.infer<typeof registerBodySchema>;
 export type LoginDto = z.infer<typeof loginBodySchema>;
+
+
+export const forgotPasswordBodySchema = z.object({
+  email: z.string().min(1, 'Email cannot be empty').email('Invalid email format'),
+});
+
+export const verifyOtpBodySchema = z.object({
+  email: z.string().min(1, 'Email cannot be empty').email('Invalid email format'),
+  otp: z.string().length(6, 'Mã OTP phải gồm 6 chữ số').regex(/^\d{6}$/, 'Mã OTP chỉ bao gồm các chữ số'),
+});
+
+export const resetPasswordBodySchema = z.object({
+  email: z.string().min(1, 'Email cannot be empty').email('Invalid email format'),
+  resetToken: z.string().min(1, 'Reset token is required'),
+  password: z
+    .string()
+    .min(6, 'Password must be at least 6 characters')
+    .max(20, 'Password cannot exceed 20 characters')
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,20}$/,
+      'Password must contain uppercase, lowercase, number, and special character'
+    ),
+});
+
+export const forgotPasswordSchema = z.object({
+  body: forgotPasswordBodySchema,
+});
+
+export const verifyOtpSchema = z.object({
+  body: verifyOtpBodySchema,
+});
+
+export const resetPasswordSchema = z.object({
+  body: resetPasswordBodySchema,
+});
+
+export type ForgotPasswordDto = z.infer<typeof forgotPasswordBodySchema>;
+export type VerifyOtpDto = z.infer<typeof verifyOtpBodySchema>;
+export type ResetPasswordDto = z.infer<typeof resetPasswordBodySchema>;

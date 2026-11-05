@@ -9,6 +9,10 @@ const router = Router();
 router.post('/register', validate(authSchemaZod.registerSchema), authController.registerUser);
 router.post('/login', validate(authSchemaZod.loginSchema), authController.loginUser);
 router.post('/refresh', authController.refreshToken);
+router.post('/forgot-password', validate(authSchemaZod.forgotPasswordSchema), authController.forgotPassword);
+router.post('/verify-otp', validate(authSchemaZod.verifyOtpSchema), authController.verifyOtp);
+router.post('/reset-password', validate(authSchemaZod.resetPasswordSchema), authController.resetPassword);
+
 
 // // Logout endpoints (hỗ trợ xác minh Access Token HOẶC Refresh Token)
 // router.post('/logout', verifyAuthForLogout, authController.logoutUser);

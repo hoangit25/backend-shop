@@ -43,6 +43,27 @@ export class AuthController {
     );
   });
 
+  forgotPassword = asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body;
+    const context = getClientContext(req);
+    const result = await this.service.forgotPassword(email, context);
+    return ApiResponse.success(res, result, result.message);
+  });
+
+  verifyOtp = asyncHandler(async (req: Request, res: Response) => {
+    const { email, otp } = req.body;
+    const context = getClientContext(req);
+    const result = await this.service.verifyOtp(email, otp, context);
+    return ApiResponse.success(res, result, result.message);
+  });
+
+  resetPassword = asyncHandler(async (req: Request, res: Response) => {
+    const { email, resetToken, password } = req.body;
+    const context = getClientContext(req);
+    const result = await this.service.resetPassword(email, resetToken, password, context);
+    return ApiResponse.success(res, result, result.message);
+  });
+
   refreshToken = asyncHandler(async (req: Request, res: Response) => {
     const token = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!token) {

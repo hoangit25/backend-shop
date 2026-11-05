@@ -10,7 +10,11 @@ export type AuditAction =
   | 'REFRESH_TOKEN_FAILED'
   | 'SESSION_REVOKED'
   | 'ALL_OTHER_SESSIONS_REVOKED'
-  | 'REGISTER_SUCCESS';
+  | 'REGISTER_SUCCESS'
+  | 'FORGOT_PASSWORD_REQUEST'
+  | 'VERIFY_OTP_SUCCESS'
+  | 'VERIFY_OTP_FAILED'
+  | 'RESET_PASSWORD_SUCCESS';
 
 export interface IAuditLog extends Document {
   userId?: Types.ObjectId;

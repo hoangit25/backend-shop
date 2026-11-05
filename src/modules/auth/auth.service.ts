@@ -1,3 +1,4 @@
+import nodemailer from 'nodemailer';
 import mongoose, { Types } from 'mongoose';
 import crypto from 'node:crypto';
 import * as jwtConfig from '../../config/jwt.config';
@@ -54,6 +55,41 @@ function userObjectId(id?: string | Types.ObjectId) {
     return undefined;
   }
 }
+
+const sendOtpEmail = async (toEmail: string, otpCode: string) => {
+  const user = process.env.USER_EMAIL;
+  const pass = process.env.USER_PASSWORD;
+  if (!user || !pass) {
+    console.warn('USER_EMAIL or USER_PASSWORD not set in env, skip sending email');
+    return;
+  }
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user, pass },
+  });
+
+  await transporter.sendMail({
+    from: `"Shop Support" <${user}>`,
+    to: toEmail,
+    subject: 'Mã xác thực (OTP) đặt lại mật khẩu',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #ffffff;">
+        <h2 style="color: #F15A24; text-align: center; margin-bottom: 8px;">Xác thực tài khoản</h2>
+        <p style="color: #4b5563; font-size: 15px; text-align: center;">Bạn nhận được yêu cầu đặt lại mật khẩu. Dưới đây là mã xác thực OTP của bạn:</p>
+        <div style="text-align: center; margin: 28px 0;">
+          <span style="display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1f2937; background: #f3f4f6; padding: 14px 28px; border-radius: 10px; border: 1px dashed #F15A24;">
+            ${otpCode}
+          </span>
+        </div>
+        <p style="color: #ef4444; font-size: 13px; text-align: center; font-weight: 500;">
+          ⚠️ Mã này có hiệu lực trong vòng <b>5 phút</b>. Tuyệt đối không chia sẻ mã này cho bất kỳ ai.
+        </p>
+        <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 20px 0;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center;">Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email. Mật khẩu của bạn vẫn an toàn.</p>
+      </div>
+    `,
+  });
+};
 
 export class AuthService {
   constructor(private repository: AuthRepository = authRepository) { }
@@ -211,6 +247,127 @@ export class AuthService {
     };
 
 
+  }
+
+  async forgotPassword(email: string, context?: ClientContext) {
+    if (!email) {
+      throw AppError.BadRequest('Email is required', 'MISSING_EMAIL');
+    }
+
+    const user = await this.repository.findByEmail(email);
+    if (!user || !user.isActive) {
+      return { message: 'Nếu email tồn tại trong hệ thống, mã xác thực OTP đã được gửi đi.' };
+    }
+
+    // 1. Tạo OTP 6 chữ số ngẫu nhiên
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+
+    // 2. Lưu OTP hash vào DB (hiệu lực 5 phút)
+    user.passwordResetOtp = hashedOtp;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = new Date(Date.now() + 5 * 60 * 1000);
+    await user.save();
+
+    // 3. Gửi email OTP
+    try {
+      await sendOtpEmail(user.email, otp);
+    } catch (err) {
+      console.error('Error sending OTP email:', err);
+    }
+
+    await AuditLogService.record({
+      userId: user._id,
+      email: user.email,
+      action: 'FORGOT_PASSWORD_REQUEST',
+      status: 'SUCCESS',
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+      details: { channel: 'GMAIL_OTP' },
+    });
+
+    return { message: 'Mã xác thực OTP đã được gửi về email của bạn.' };
+  }
+
+  async verifyOtp(email: string, otp: string, context?: ClientContext) {
+    if (!email || !otp) {
+      throw AppError.BadRequest('Email and OTP are required', 'MISSING_FIELDS');
+    }
+
+    const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+    const user = await this.repository.findByResetOtp(email, hashedOtp);
+
+    if (!user) {
+      await AuditLogService.record({
+        email,
+        action: 'VERIFY_OTP_FAILED',
+        status: 'WARNING',
+        ipAddress: context?.ipAddress,
+        userAgent: context?.userAgent,
+        details: { reason: 'Invalid or expired OTP' },
+      });
+      throw AppError.BadRequest('Mã OTP không chính xác hoặc đã hết hạn.', 'INVALID_OTP');
+    }
+
+    // OTP hợp lệ -> Tạo 1 resetToken tạm thời (hiệu lực 10 phút) để frontend submit mật khẩu mới
+    const rawResetToken = crypto.randomBytes(32).toString('hex');
+    const hashedResetToken = crypto.createHash('sha256').update(rawResetToken).digest('hex');
+
+    user.passwordResetOtp = undefined; // Hủy OTP sau khi xác minh xong
+    user.passwordResetToken = hashedResetToken;
+    user.passwordResetExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 phút để nhập mật khẩu mới
+    await user.save();
+
+    await AuditLogService.record({
+      userId: user._id,
+      email: user.email,
+      action: 'VERIFY_OTP_SUCCESS',
+      status: 'SUCCESS',
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+    });
+
+    return {
+      message: 'Xác thực mã OTP thành công.',
+      resetToken: rawResetToken,
+    };
+  }
+
+  async resetPassword(email: string, resetToken: string, newPassword: string, context?: ClientContext) {
+    if (!email || !resetToken || !newPassword) {
+      throw AppError.BadRequest('Email, reset token and new password are required', 'MISSING_FIELDS');
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    const user = await this.repository.findByResetToken(email, hashedToken);
+
+    if (!user) {
+      throw AppError.BadRequest('Phiên đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng thử lại từ đầu.', 'INVALID_TOKEN');
+    }
+
+    // Cập nhật mật khẩu mới (Mongoose pre-save hook sẽ băm bcrypt)
+    user.password = newPassword;
+    user.passwordResetOtp = undefined;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    // Thu hồi toàn bộ phiên đăng nhập cũ trên mọi thiết bị
+    await SessionModel.updateMany(
+      { userId: user._id, isRevoked: false },
+      { $set: { isRevoked: true } }
+    );
+
+    await AuditLogService.record({
+      userId: user._id,
+      email: user.email,
+      action: 'RESET_PASSWORD_SUCCESS',
+      status: 'SUCCESS',
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+    });
+
+    return { message: 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.' };
   }
 
   async verifyRefreshToken(refreshToken: string, context?: ClientContext) {
