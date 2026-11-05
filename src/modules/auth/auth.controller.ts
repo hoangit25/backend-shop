@@ -43,7 +43,6 @@ export class AuthController {
     );
   });
 
-  
   forgotPassword = asyncHandler(async (req: Request, res: Response) => {
     const { email } = req.body;
     const context = getClientContext(req);
@@ -51,10 +50,17 @@ export class AuthController {
     return ApiResponse.success(res, result, result.message);
   });
 
-  resetPassword = asyncHandler(async (req: Request, res: Response) => {
-    const { token, password } = req.body;
+  verifyOtp = asyncHandler(async (req: Request, res: Response) => {
+    const { email, otp } = req.body;
     const context = getClientContext(req);
-    const result = await this.service.resetPassword(token, password, context);
+    const result = await this.service.verifyOtp(email, otp, context);
+    return ApiResponse.success(res, result, result.message);
+  });
+
+  resetPassword = asyncHandler(async (req: Request, res: Response) => {
+    const { email, resetToken, password } = req.body;
+    const context = getClientContext(req);
+    const result = await this.service.resetPassword(email, resetToken, password, context);
     return ApiResponse.success(res, result, result.message);
   });
 

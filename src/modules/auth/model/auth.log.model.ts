@@ -12,6 +12,8 @@ export type AuditAction =
   | 'ALL_OTHER_SESSIONS_REVOKED'
   | 'REGISTER_SUCCESS'
   | 'FORGOT_PASSWORD_REQUEST'
+  | 'VERIFY_OTP_SUCCESS'
+  | 'VERIFY_OTP_FAILED'
   | 'RESET_PASSWORD_SUCCESS';
 
 export interface IAuditLog extends Document {
