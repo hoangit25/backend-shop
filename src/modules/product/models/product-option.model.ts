@@ -113,6 +113,6 @@ productOptionSchema.index({ productId: 1, deleted: 1 });
 const ProductOptionModel = mongoose.model<IProductOption>(
   'ProductOption',
   productOptionSchema,
-  'productoptions'
+  'Productoptions'
 );
 export default ProductOptionModel;

@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { BaseRepository } from '../../../common/base-responsitory';
 import ProductVariantModel, { IProductVariant } from '../models/product-variant.model';
 
@@ -7,11 +8,24 @@ export class ProductVariantRepository extends BaseRepository<IProductVariant> {
   }
 
   async findByProductId(productId: string) {
-    return this.find({ productId, deleted: false });
+    const objId = mongoose.Types.ObjectId.isValid(productId)
+      ? new mongoose.Types.ObjectId(productId)
+      : productId;
+    return this.find({
+      $or: [{ productId: objId }, { productId: productId }, { 'productId.id': productId }],
+      deleted: false,
+    });
   }
 
   async findActiveByProductId(productId: string) {
-    return this.find({ productId, deleted: false, isActive: true });
+    const objId = mongoose.Types.ObjectId.isValid(productId)
+      ? new mongoose.Types.ObjectId(productId)
+      : productId;
+    return this.find({
+      $or: [{ productId: objId }, { productId: productId }, { 'productId.id': productId }],
+      deleted: false,
+      isActive: true,
+    });
   }
 
   async findBySku(sku: string) {
