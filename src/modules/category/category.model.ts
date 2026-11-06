@@ -65,6 +65,6 @@ categorySchema.index({ slug: 1 });
 categorySchema.index({ parentId: 1, deleted: 1, isActive: 1 });
 categorySchema.index({ deleted: 1, isActive: 1 });
 
-const CategoryModel = mongoose.model<ICategory>('Category', categorySchema, 'categories');
+const CategoryModel = mongoose.model<ICategory>('Category', categorySchema, 'Categories');
 export default CategoryModel;
 

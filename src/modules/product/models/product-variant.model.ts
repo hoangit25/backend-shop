@@ -113,6 +113,6 @@ productVariantSchema.index({ barcode: 1 });
 const ProductVariantModel = mongoose.model<IProductVariant>(
   'ProductVariant',
   productVariantSchema,
-  'productvariants'
+  'Productvariants'
 );
 export default ProductVariantModel;
