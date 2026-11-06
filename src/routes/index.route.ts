@@ -3,6 +3,7 @@ import { authRouter } from '../modules/auth/auth.route';
 import { productRouter } from '../modules/product/routes/product.route';
 import { categoryRouter } from '../modules/category/category.route';
 import { inventoryRouter } from '../modules/inventory/inventory.route';
+import { cartRouter } from '../modules/cart/cart.route';
 import { AppError } from '../common/appError';
 import { errorHandler } from '../middlewares/AppError.middleware';
 
@@ -13,6 +14,7 @@ export const indexRouter = (app: Express) => {
   app.use(`${version}/categories`, categoryRouter);
   app.use(`${version}/products`, productRouter);
   app.use(`${version}/inventory`, inventoryRouter);
+  app.use(`${version}/cart`, cartRouter);
 
   // 404 handler for undefined routes
   app.use((req, _res, next) => {
