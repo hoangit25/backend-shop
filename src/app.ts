@@ -31,6 +31,8 @@ app.use(
   cors({
     origin: [env.CLIENT_URL, 'http://localhost:5000', 'http://localhost:5173'],
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-guest-id'],
+    exposedHeaders: ['x-guest-id'],
   })
 );
 

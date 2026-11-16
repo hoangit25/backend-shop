@@ -298,7 +298,8 @@ export class CartService {
     );
 
     if (itemIndex === -1) {
-      throw AppError.NotFound('Item not found in cart', 'CART_ITEM_NOT_FOUND');
+      // Idempotent: nếu item đã bị xoá trước đó (hoặc xoá trùng lặp), không throw lỗi mà trả về cart hiện tại
+      return cart;
     }
 
     cart.items.splice(itemIndex, 1);
