@@ -87,8 +87,8 @@ export class VNPayProvider implements IPaymentProvider {
     const expireDate = new Date(createDate.getTime() + 15 * 60 * 1000); // Hết hạn sau 15 phút
 
     const returnUrl =
+      process.env.VNP_RETURN_URL?.trim() ||
       input.returnUrl ||
-      process.env.VNP_RETURN_URL ||
       `${process.env.CLIENT_URL || 'https://frontend-shop-gamma.vercel.app'}/checkout/payment-return`;
 
     const vnpParams: Record<string, any> = {
