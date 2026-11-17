@@ -19,6 +19,8 @@ export const indexRouter = (app: Express) => {
   app.use(`${version}/cart`, cartRouter);
   app.use(`${version}/orders`, orderRouter);
   app.use(`${version}/payments`, paymentRouter);
+  // Alias hỗ trợ các URL webhook/return từ VNPay hoặc bên ngoài không có prefix /v1
+  app.use('/api/payments', paymentRouter);
 
   // 404 handler for undefined routes
   app.use((req, _res, next) => {

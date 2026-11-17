@@ -56,9 +56,10 @@ router.get(
   '/vnpay/return',
   asyncHandler(async (req: Request, res: Response) => {
     const query = req.query as Record<string, any>;
-    const clientUrl =
+    const clientUrl = (
       process.env.CLIENT_URL?.trim() ||
-      'https://frontend-shop-gamma.vercel.app';
+      'https://frontend-shop-gamma.vercel.app'
+    ).replace(/\/+$/, '');
 
     try {
       const result = await paymentService.handleReturn('VNPAY', query);
