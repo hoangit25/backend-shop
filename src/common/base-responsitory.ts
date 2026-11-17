@@ -73,7 +73,7 @@ export class BaseRepository<T> {
     };
   }
 
-  async updateById(id: string, update: UpdateQuery<T>, options: QueryOptions = { new: true }) {
+  async updateById(id: string, update: UpdateQuery<T>, options: QueryOptions = { returnDocument: 'after' }) {
     return this.model.findByIdAndUpdate(id, update, options);
   }
 
@@ -93,7 +93,7 @@ export class BaseRepository<T> {
     return this.model.deleteOne(filter, options as any);
   }
 
-  async softDelete(id: string, options: QueryOptions = { new: true }) {
+  async softDelete(id: string, options: QueryOptions = { returnDocument: 'after' }) {
     return this.model.findByIdAndUpdate(
       id,
       {
@@ -105,7 +105,7 @@ export class BaseRepository<T> {
     );
   }
 
-  async restore(id: string, options: QueryOptions = { new: true }) {
+  async restore(id: string, options: QueryOptions = { returnDocument: 'after' }) {
     return this.model.findByIdAndUpdate(
       id,
       {
