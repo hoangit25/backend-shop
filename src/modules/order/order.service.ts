@@ -387,7 +387,12 @@ export class OrderService {
         (identity.userId && order.userId?.toString() === identity.userId.toString()) ||
         (identity.guestId && order.guestId === identity.guestId);
 
-      if (!isOwner) {
+      // Cho phép tra cứu nếu là chủ đơn hàng HOẶC người dùng có mã đơn hàng cụ thể (orderCode bí mật)
+      // (Phục vụ cho luồng xác thực sau khi VNPay redirect về trang kết quả thanh toán)
+      const isMatchingOrderCode =
+        !isObjectId && order.orderCode.toUpperCase() === orderIdentifier.toUpperCase();
+
+      if (!isOwner && !isMatchingOrderCode) {
         throw AppError.Forbidden('You do not have access to this order', 'FORBIDDEN');
       }
     }

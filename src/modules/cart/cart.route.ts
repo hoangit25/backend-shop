@@ -37,6 +37,23 @@ export const optionalAuth = async (req: Request, _res: Response, next: NextFunct
     } catch {
       // Bỏ qua lỗi token đối với request khách vãng lai
     }
+  } else if (req.cookies?.refreshToken) {
+    // Dự phòng: Nếu chưa gửi Bearer token nhưng có refreshToken cookie (ví dụ vừa redirect từ cổng thanh toán)
+    try {
+      const decoded = jwtConfig.verifyRefreshToken(req.cookies.refreshToken);
+      if (decoded?.id) {
+        const user = await UserModel.findOne({
+          _id: decoded.id,
+          deleted: false,
+          isActive: true,
+        });
+        if (user) {
+          (req as any).user = user;
+        }
+      }
+    } catch {
+      // Bỏ qua nếu refresh token hết hạn
+    }
   }
   next();
 };

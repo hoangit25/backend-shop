@@ -332,7 +332,7 @@ export class PaymentService {
             },
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       if (!updatedOrder) {
