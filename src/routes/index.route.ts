@@ -4,8 +4,8 @@ import { productRouter } from '../modules/product/routes/product.route';
 import { categoryRouter } from '../modules/category/category.route';
 import { inventoryRouter } from '../modules/inventory/inventory.route';
 import { cartRouter } from '../modules/cart/cart.route';
-// import { orderRouter } from '../modules/order/order.route';
-// import { paymentRouter } from '../modules/payment/payment.route';
+import { orderRouter } from '../modules/order/order.route';
+import { paymentRouter } from '../modules/payment/payment.route';
 import { AppError } from '../common/appError';
 import { errorHandler } from '../middlewares/AppError.middleware';
 
@@ -17,12 +17,17 @@ export const indexRouter = (app: Express) => {
   app.use(`${version}/products`, productRouter);
   app.use(`${version}/inventory`, inventoryRouter);
   app.use(`${version}/cart`, cartRouter);
-  // app.use(`${version}/orders`, orderRouter);
-  // app.use(`${version}/payments`, paymentRouter);
+  app.use(`${version}/orders`, orderRouter);
+  app.use(`${version}/payments`, paymentRouter);
 
   // 404 handler for undefined routes
   app.use((req, _res, next) => {
-    next(AppError.NotFound(`Route not found: ${req.method} ${req.originalUrl}`, 'ROUTE_NOT_FOUND'));
+    next(
+      AppError.NotFound(
+        `Route not found: ${req.method} ${req.originalUrl}`,
+        'ROUTE_NOT_FOUND'
+      )
+    );
   });
 
   app.use(errorHandler);
