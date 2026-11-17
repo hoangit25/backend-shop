@@ -4,7 +4,10 @@ import { z } from 'zod';
 const envSchema = z.object({
   PORT: z.string().default('5000').transform((val) => parseInt(val, 10)),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  CLIENT_URL: z.string().default('http://localhost:3000'),
+  CLIENT_URL: z
+    .string()
+    .default('http://localhost:3000')
+    .transform((val) => val.trim().replace(/\/+$/, '')),
   MONGO_URL: z.string().min(1, 'MONGO_URL is required'),
   CLOUDINARY_CLOUD_NAME: z.string().optional().default(() => process.env.CLOUD_NAME || ''),
   CLOUDINARY_API_KEY: z.string().optional().default(() => process.env.API_KEY || ''),
