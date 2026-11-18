@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-export type PaymentProviderType = 'COD' | 'VNPAY' | 'MOMO';
+export type PaymentProviderType = 'COD' | 'VNPAY';
 export type PaymentStatusType =
   | 'PENDING'
   | 'SUCCESS'
@@ -56,7 +56,7 @@ const paymentSchema = new Schema<IPayment>(
     },
     provider: {
       type: String,
-      enum: ['COD', 'VNPAY', 'MOMO'],
+      enum: ['COD', 'VNPAY'],
       required: true,
     },
     amount: {

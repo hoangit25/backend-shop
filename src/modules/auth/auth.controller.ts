@@ -6,7 +6,7 @@ import { AuthService, authService, ClientContext } from './auth.service';
 const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
+  sameSite: 'lax' as const, // 'lax' cho phép gửi cookie khi user navigate trực tiếp qua URL bar (top-level GET navigation)
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
