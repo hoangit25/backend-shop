@@ -209,59 +209,96 @@ MOMO_ENDPOINT=https://test-payment.momo.vn/v2/gateway/api/create
   - Phí vận chuyển: Miễn phí với đơn hàng từ 500.000₫, mặc định 30.000₫ cho đơn thấp hơn.
 
 ### 5.6. Order & State Machine (`order/`)
-- **Tạo đơn hàng (`createOrder`)**:
-  - Có thể tạo từ các sản phẩm được tích chọn trong giỏ hàng hoặc truyền trực tiếp danh sách items.
-  - Tự động sinh mã đơn duy nhất định dạng `ORD-{TIMESTAMP}-{RANDOM}`.
-  - Kiểm tra tồn kho lần cuối, tự động trừ kho thông qua `inventoryService.adjustStock(type: 'EXPORT')`.
-  - Tăng số lượt đã bán (`sold`) của sản phẩm.
-  - Tự động dọn dẹp các sản phẩm đã mua khỏi giỏ hàng của người dùng.
-- **State Machine vòng đời đơn hàng**:
+
+Module quản lý toàn bộ vòng đời của đơn đặt hàng, tích hợp chặt chẽ với kho hàng và giỏ hàng:
+
+- **Tạo đơn hàng thông minh (`createOrder`)**:
+  - Hỗ trợ tạo đơn từ các sản phẩm được chọn trong giỏ hàng (`fromCart: true`) hoặc truyền danh sách `items` trực tiếp.
+  - Hỗ trợ cả người dùng đăng nhập (`userId`) và khách vãng lai (`guestId`).
+  - Sinh mã đơn hàng ngẫu nhiên, bảo mật và duy nhất: `ORD-{TIMESTAMP}-{RANDOM}` (ví dụ: `ORD-MWKXAFUK-TPYZ`).
+  - **Kiểm định tồn kho lần cuối**: Kiểm tra tính khả dụng, trạng thái kích hoạt của sản phẩm/biến thể và số lượng tồn thực tế.
+  - **Trừ kho tự động (Atomic Adjust)**: Tự động trừ kho qua `inventoryService.adjustStock({ type: 'EXPORT' })` và tăng lượt bán (`sold`).
+  - **Tự động làm sạch giỏ hàng**: Loại bỏ chính xác các sản phẩm vừa đặt mua khỏi giỏ hàng, giữ lại các sản phẩm chưa được chọn.
+  - **Tính toán chi phí**: Phí vận chuyển tiêu chuẩn 30.000₫, miễn phí vận chuyển toàn quốc cho đơn hàng từ 500.000₫.
+
+- **State Machine vòng đời đơn hàng & Tự động hoàn kho (Restock)**:
   ```mermaid
   stateDiagram-v2
-      [*] --> PENDING: Khách tạo đơn
-      PENDING --> CONFIRMED: Thanh toán xong / Xác nhận
-      PENDING --> CANCELLED: Khách huỷ / Hết hạn
-      CONFIRMED --> PROCESSING: Đang đóng gói
-      CONFIRMED --> CANCELLED: Huỷ đơn
-      PROCESSING --> SHIPPING: Bàn giao vận chuyển
-      PROCESSING --> CANCELLED: Huỷ đơn
-      SHIPPING --> DELIVERED: Giao hàng thành công
-      SHIPPING --> RETURNED: Giao thất bại / Trả hàng
-      DELIVERED --> RETURNED: Đổi trả hàng
-      DELIVERED --> [*]
-      CANCELLED --> [*]: Tự động hoàn lại tồn kho
-      RETURNED --> [*]: Tự động hoàn lại tồn kho
+      [*] --> PENDING: Khách tạo đơn thành công
+      PENDING --> CONFIRMED: Thanh toán VNPay xong / Duyệt đơn COD
+      PENDING --> CANCELLED: Khách huỷ / Hết hạn thanh toán
+      CONFIRMED --> PROCESSING: Đang chuẩn bị & đóng gói
+      CONFIRMED --> CANCELLED: Huỷ đơn (Bởi Admin / Khách)
+      PROCESSING --> SHIPPING: Bàn giao đơn vị vận chuyển
+      PROCESSING --> CANCELLED: Huỷ đơn đặc biệt
+      SHIPPING --> DELIVERED: Khách nhận hàng thành công
+      SHIPPING --> RETURNED: Giao thất bại / Trả hàng về kho
+      DELIVERED --> RETURNED: Đổi trả bảo hành
+      DELIVERED --> [*]: Hoàn tất đơn hàng
+      CANCELLED --> [*]: Tự động hoàn lại tồn kho (IMPORT)
+      RETURNED --> [*]: Tự động hoàn lại tồn kho (IMPORT)
   ```
-- **Tự động hoàn kho (Restock)**: Khi đơn hàng bị chuyển sang trạng thái `CANCELLED` hoặc `RETURNED`, hệ thống lập tức hoàn lại số lượng sản phẩm vào kho (`adjustStock` với `type: 'IMPORT'`) và giảm lại chỉ số `sold`.
+  - Khi đơn hàng chuyển sang `CANCELLED` hoặc `RETURNED`, hệ thống tự động chạy job hoàn kho: nhập lại đúng số lượng vào kho (`adjustStock` với `type: 'IMPORT'`) và giảm lại chỉ số `sold`.
+
+- **Phân quyền & Tra cứu an toàn (`getOrderById`)**:
+  - Người dùng đăng nhập: Chỉ được xem đơn hàng do chính mình tạo.
+  - Khách vãng lai: Được xem đơn hàng khớp với `guestId` của trình duyệt.
+  - **Tra cứu bằng mã bí mật `orderCode`**: Cho phép tra cứu trạng thái đơn hàng khi người dùng cung cấp chính xác mã `orderCode` 16 ký tự unguessable (phục vụ cho trang đón kết quả thanh toán sau khi VNPay chuyển hướng về hoặc tra cứu qua email/SMS).
+  - Tự động nhận diện danh tính qua Bearer Token hoặc fallback qua `refreshToken` Cookie.
+
+---
 
 ### 5.7. Payment & Gateways (`payment/`)
-Áp dụng mẫu thiết kế **Strategy Pattern**:
+
+Hệ thống thanh toán được thiết kế theo mẫu **Strategy Pattern** linh hoạt và đáp ứng **5 Tiêu chí Bảo mật Quốc tế** cho Cổng thanh toán trực tuyến:
 
 ```
-           ┌──────────────────────┐
-           │    PaymentService    │
-           └──────────┬───────────┘
-                      │
-        ┌─────────────┼─────────────┐
-        ▼             ▼             ▼
-  ┌───────────┐ ┌───────────┐ ┌───────────┐
-  │    COD    │ │   VNPay   │ │   MoMo    │
-  │  Provider │ │  Provider │ │  Provider │
-  └───────────┘ └───────────┘ └───────────┘
+           ┌─────────────────────────────────────────┐
+           │             PaymentService              │
+           └────────────────────┬────────────────────┘
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        ▼                       ▼                       ▼
+  ┌───────────┐                                   ┌───────────┐
+  │    COD    │                                   │   VNPay   │
+  │  Provider │                                   │  Provider │
+  └───────────┘                                   └───────────┘
 ```
 
-- **COD (Cash on Delivery)**:
-  - Khởi tạo thanh toán trực tiếp, khi giao hàng thành công (`DELIVERED`) thì hệ thống tự động đổi `paymentStatus = 'PAID'`.
-- **VNPay Gateway (v2.1.0)**:
-  - Sắp xếp thứ tự các tham số theo chuẩn alphabet.
-  - Mã hoá tạo chữ ký bảo mật **HMAC-SHA512** với Secret Key.
-  - Xác thực hai chiều: Khách hàng redirect về (`/vnpay/return`) và Webhook IPN giữa hai máy chủ (`/vnpay/webhook`).
-- **MoMo Gateway (All-in-One API)**:
-  - Sinh chữ ký điện tử **HMAC-SHA256**.
-  - Tích hợp API tạo giao diện thanh toán (Web & QR MoMo).
-  - Xác thực chữ ký phản hồi và xử lý IPN.
-- **Tính Idempotent (Chống lặp giao dịch)**:
-  - Cổng thanh toán có thể gọi lại IPN nhiều lần khi mạng chậm, hệ thống nhận diện nếu đơn hàng đã được cập nhật `PAID` sẽ lập tức trả về phản hồi thành công mà không chạy lại logic cộng dồn hoặc chuyển trạng thái đơn.
+#### 🛡️ 5 Tiêu chí Bảo mật & Chống gian lận VNPay:
+
+1. **Tiêu chí 1: Không thể giả mạo thanh toán bằng cách sửa URL Return**
+   - Mọi tham số trên Return URL đều được mã hóa và ký bằng thuật toán bảo mật **HMAC-SHA512** với Secret Key bí mật (`VNP_HASH_SECRET`).
+   - Sắp xếp thứ tự các tham số theo đúng chuẩn bảng chữ cái alphabet trước khi tạo/kiểm tra chữ ký số (VNPay Standard 2.1.0).
+   - Lọc nghiêm ngặt: Chỉ lấy các tham số bắt đầu bằng `vnp_` và loại trừ `vnp_SecureHash`, `vnp_SecureHashType`.
+   - Sử dụng hàm so sánh an toàn `crypto.timingSafeEqual` để **chống tấn công Timing Attack**.
+
+2. **Tiêu chí 2: Không thể đánh dấu PAID khi số tiền không khớp**
+   - Khi nhận dữ liệu từ Return URL hoặc Webhook IPN, hệ thống quy đổi `vnp_Amount / 100` ra đơn vị VND thực tế.
+   - So khớp tuyệt đối với `order.pricing.totalAmount` đã lưu trong Database.
+   - Nếu số tiền sai lệch dù chỉ 1 đồng: Lập tức từ chối, đánh dấu giao dịch `FAILED`, và phản hồi mã lỗi `RspCode: '04'` (Invalid amount) cho VNPay.
+
+3. **Tiêu chí 3: Chống cập nhật thanh toán lặp (Idempotent Check & Race Condition)**
+   - **Idempotency**: Khi VNPay gửi IPN lặp lại do mạng chập chờn, hệ thống kiểm tra nếu đơn hàng đã ở trạng thái `PAID`, lập tức trả về `RspCode: '02'` (Order already confirmed) mà không xử lý lại.
+   - **Atomic Operation**: Sử dụng `OrderModel.findOneAndUpdate({ _id: order._id, paymentStatus: { $ne: 'PAID' } }, ...)` với khóa điều kiện nguyên tử, ngăn chặn hoàn toàn hiện tượng Race Condition khi Return URL của trình duyệt và IPN Webhook của máy chủ VNPay gửi tới cùng một thời điểm mili-giây.
+
+4. **Tiêu chí 4: Không mất trạng thái khi khách hàng đóng trình duyệt sau thanh toán**
+   - Cơ chế **Server-to-Server IPN Webhook** (`/api/v1/payments/vnpay/ipn`) chạy ngầm hoàn toàn độc lập giữa máy chủ VNPay và máy chủ Backend.
+   - Kể cả khi khách hàng tắt trình duyệt, mất mạng hoặc đóng tab sau khi trừ tiền tại ngân hàng, Backend vẫn tiếp nhận IPN, cập nhật đơn hàng thành `PAID` và lưu thời điểm `ipnReceivedAt`.
+
+5. **Tiêu chí 5: Đối soát giao dịch với Merchant Sandbox**
+   - Lưu trữ đầy đủ toàn bộ chứng từ thanh toán vào `PaymentModel`:
+     - `orderCode`: Khớp `vnp_TxnRef`
+     - `transactionId`: Khớp `vnp_TransactionNo` trên cổng quản trị Merchant VNPay
+     - `bankTranNo`: Khớp `vnp_BankTranNo` của ngân hàng thanh toán
+     - `bankCode`: Ngân hàng giao dịch (NCB, VCB,...)
+     - `cardType`: Loại thẻ (ATM, QR, VISA)
+     - `vnpPayDate`: Thời gian giao dịch chuẩn YYYYMMDDHHmmss
+     - `ipnCallCount`: Đếm số lần VNPay gọi IPN
+     - `rawResponse`: Lưu trữ JSON gốc của toàn bộ phản hồi
+   - Cung cấp API đối soát chuyên dụng cho Admin:
+     - `GET /api/v1/payments/reconciliation` (Danh sách giao dịch đối soát, có lọc và phân trang)
+     - `GET /api/v1/payments/reconciliation/:txnRef` (Chi tiết đối soát 1 giao dịch theo mã tham chiếu)
 
 ---
 
@@ -344,11 +381,14 @@ Tất cả các API đều có tiền tố `/api/v1`.
 | Phương thức | Đường dẫn | Quyền hạn | Mô tả |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/payments/create` | Guest / User | Khởi tạo giao dịch thanh toán (Lấy URL VNPay, MoMo hoặc xác nhận COD) |
-| `GET` | `/payments/vnpay/return` | Public | Điểm tiếp nhận khách hàng chuyển hướng về từ VNPay |
-| `GET` | `/payments/vnpay/webhook`| Public | Server-to-Server IPN Webhook đồng bộ giao dịch từ VNPay |
+| `GET` | `/payments/vnpay/return` | Public | Tiếp nhận khách hàng redirect về từ VNPay, kiểm tra HMAC-SHA512 & redirect về Frontend |
+| `GET` / `POST`| `/payments/vnpay/ipn` | Public | Server-to-Server IPN Webhook chính thức từ VNPay (Idempotent, Amount check) |
+| `GET` / `POST`| `/payments/vnpay/webhook`| Public | Alias cho IPN Webhook VNPay |
 | `GET` | `/payments/momo/return` | Public | Điểm tiếp nhận khách hàng chuyển hướng về từ MoMo |
 | `POST` | `/payments/momo/webhook` | Public | Server-to-Server IPN Webhook đồng bộ giao dịch từ MoMo |
-| `GET` | `/payments/order/:orderId`| Guest / User | Tra cứu trạng thái giao dịch thanh toán của một đơn hàng |
+| `GET` | `/payments/order/:orderId`| Guest / User | Tra cứu trạng thái giao dịch thanh toán của một đơn hàng (cho Frontend polling) |
+| `GET` | `/payments/reconciliation` | Admin / Auth | [Tiêu chí 5] Lấy danh sách giao dịch đối soát với VNPay Merchant Sandbox (lọc theo mã GD, ngân hàng, trạng thái, phân trang) |
+| `GET` | `/payments/reconciliation/:txnRef` | Admin / Auth | [Tiêu chí 5] Chi tiết đối soát 1 giao dịch theo mã tham chiếu / mã GD VNPay |
 
 ---
 

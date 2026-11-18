@@ -10,7 +10,7 @@ export type OrderStatus =
   | 'RETURNED';
 
 export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
-export type PaymentMethod = 'COD' | 'VNPAY' | 'MOMO';
+export type PaymentMethod = 'COD' | 'VNPAY';
 
 export interface IOrderItem {
   productId: Types.ObjectId;
@@ -308,7 +308,7 @@ const orderSchema = new Schema<IOrder>(
     },
     paymentMethod: {
       type: String,
-      enum: ['COD', 'VNPAY', 'MOMO'],
+      enum: ['COD', 'VNPAY'],
       required: true,
       default: 'COD',
     },
