@@ -3,10 +3,15 @@ import { ApiResponse } from '../../common/api.responsitory';
 import { asyncHandler } from '../../common/asycn.handel';
 import { AuthService, authService, ClientContext } from './auth.service';
 
+// Cross-site (frontend Vercel ↔ backend Vercel khác domain):
+// - sameSite: 'none' + secure: true  → bắt buộc để trình duyệt gửi cookie cross-site
+// - Trong development (localhost), sameSite: 'lax' là đủ vì cùng site
+const isProduction = process.env.NODE_ENV === 'production';
+
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const, // 'lax' cho phép gửi cookie khi user navigate trực tiếp qua URL bar (top-level GET navigation)
+  secure: isProduction,                                      // HTTPS bắt buộc khi sameSite=none
+  sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax',  // cross-site cần 'none'; localhost cần 'lax'
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
