@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ApiResponse } from '../../common/api.responsitory';
 import { asyncHandler } from '../../common/asycn.handel';
+import UserModel from '../user/user.model';
 import { AuthService, authService, ClientContext } from './auth.service';
 
 // Cross-site (frontend Vercel ↔ backend Vercel khác domain):
@@ -46,6 +47,36 @@ export class AuthController {
       },
       'Login successful'
     );
+  });
+
+  getProfile = asyncHandler(async (req: Request, res: Response) => {
+    const user = (req as any).user;
+    if (!user) {
+      return ApiResponse.message(res, 'User not found', 404);
+    }
+    const userObj = user.toObject ? user.toObject() : { ...user };
+    delete (userObj as any).password;
+    return ApiResponse.success(res, userObj, 'User profile retrieved successfully');
+  });
+
+  updateProfile = asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as any).user?._id;
+    if (!userId) {
+      return ApiResponse.message(res, 'User not authenticated', 401);
+    }
+    const { fullName, phone, avatar } = req.body;
+    const updateData: Record<string, any> = {};
+    if (fullName !== undefined) updateData.fullName = String(fullName).trim();
+    if (phone !== undefined) updateData.phone = String(phone).trim();
+    if (avatar !== undefined) updateData.avatar = String(avatar).trim();
+
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true }
+    ).select('-password');
+
+    return ApiResponse.success(res, updatedUser, 'Profile updated successfully');
   });
 
   forgotPassword = asyncHandler(async (req: Request, res: Response) => {

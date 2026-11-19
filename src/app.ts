@@ -11,6 +11,10 @@ import { indexRouter } from './routes/index.route';
 
 const app: Express = express();
 
+// Tin cậy reverse proxy (bắt buộc khi deploy trên Vercel, Render, Heroku)
+// để cookie secure, req.ip và rate-limiter nhận diện đúng IP người dùng thực tế qua HTTPS
+app.set('trust proxy', 1);
+
 // 1. CORS PHẢI LÀ MIDDLEWARE ĐẦU TIÊN để xử lý Preflight (OPTIONS) và gán header cho mọi response (kể cả lỗi/rate-limit)
 const allowedOrigins = [
   env.CLIENT_URL,
