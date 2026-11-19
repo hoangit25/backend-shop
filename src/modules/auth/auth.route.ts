@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {authController} from './auth.controller';
 import { validate } from '../../middlewares/validate.middleware';
 import * as authSchemaZod from './auth.schema';
+import { verifyToken } from '../../middlewares/authentication.middelware';
 
 const router = Router();
 
@@ -12,6 +13,11 @@ router.post('/refresh', authController.refreshToken);
 router.post('/forgot-password', validate(authSchemaZod.forgotPasswordSchema), authController.forgotPassword);
 router.post('/verify-otp', validate(authSchemaZod.verifyOtpSchema), authController.verifyOtp);
 router.post('/reset-password', validate(authSchemaZod.resetPasswordSchema), authController.resetPassword);
+
+// Profile endpoints
+router.get('/profile', verifyToken, authController.getProfile);
+router.get('/me', verifyToken, authController.getProfile);
+router.put('/profile', verifyToken, authController.updateProfile);
 
 
 // // Logout endpoints (hỗ trợ xác minh Access Token HOẶC Refresh Token)

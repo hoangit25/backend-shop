@@ -13,6 +13,7 @@ export const indexRouter = (app: Express) => {
   const version = '/api/v1';
 
   app.use(`${version}/auth`, authRouter);
+  app.use(`${version}/users`, authRouter);
   app.use(`${version}/categories`, categoryRouter);
   app.use(`${version}/products`, productRouter);
   app.use(`${version}/inventory`, inventoryRouter);
