@@ -17,7 +17,8 @@ export class CategoryController {
   });
 
   getCategoryById = asyncHandler(async (req: Request, res: Response) => {
-    const category = await this.service.getCategoryById(req.params.id as string);
+    const idOrSlug = (req.params.slug || req.params.id) as string;
+    const category = await this.service.getCategoryById(idOrSlug);
     return ApiResponse.success(res, category);
   });
 

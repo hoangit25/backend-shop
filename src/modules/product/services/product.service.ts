@@ -94,38 +94,68 @@ export class ProductService {
     const cached = await cacheService.get<any>(cacheKey);
     if (cached) return cached;
 
-    const query: any = { deleted: false, isActive: true };
+    const conditions: any[] = [{ deleted: false, isActive: true }];
 
     if (filter.categoryId) {
-      query.categoryId = filter.categoryId;
+      let targetId: any = filter.categoryId;
+      if (!Types.ObjectId.isValid(filter.categoryId)) {
+        const CategoryModel = mongoose.models.Category || mongoose.model('Category');
+        const cat = await CategoryModel.findOne({ slug: filter.categoryId, deleted: false });
+        if (cat) {
+          targetId = cat._id;
+        }
+      }
+
+      if (Types.ObjectId.isValid(targetId)) {
+        conditions.push({
+          $or: [
+            { categoryId: new Types.ObjectId(targetId) },
+            { categoryId: targetId.toString() },
+          ],
+        });
+      } else {
+        conditions.push({ categoryId: targetId });
+      }
     }
+
     if (filter.brand) {
-      query.brand = { $regex: filter.brand, $options: 'i' };
+      conditions.push({ brand: { $regex: filter.brand, $options: 'i' } });
     }
+
     if (filter.keyword) {
-      query.$or = [
-        { name: { $regex: filter.keyword, $options: 'i' } },
-        { description: { $regex: filter.keyword, $options: 'i' } },
-        { tags: { $in: [new RegExp(filter.keyword, 'i')] } },
-      ];
+      conditions.push({
+        $or: [
+          { name: { $regex: filter.keyword, $options: 'i' } },
+          { description: { $regex: filter.keyword, $options: 'i' } },
+          { tags: { $in: [new RegExp(filter.keyword, 'i')] } },
+        ],
+      });
     }
+
     if (filter.minPrice !== undefined || filter.maxPrice !== undefined) {
-      query.price = {};
-      if (filter.minPrice !== undefined) query.price.$gte = filter.minPrice;
-      if (filter.maxPrice !== undefined) query.price.$lte = filter.maxPrice;
+      const priceCond: any = {};
+      if (filter.minPrice !== undefined) priceCond.$gte = filter.minPrice;
+      if (filter.maxPrice !== undefined) priceCond.$lte = filter.maxPrice;
+      conditions.push({ price: priceCond });
     }
+
     if (filter.rating !== undefined) {
-      query.rating = { $gte: filter.rating };
+      conditions.push({ rating: { $gte: filter.rating } });
     }
+
     if (filter.inStock === true) {
-      query.stock = { $gt: 0 };
+      conditions.push({ stock: { $gt: 0 } });
     }
+
     if (filter.isFeatured !== undefined) {
-      query.isFeatured = filter.isFeatured;
+      conditions.push({ isFeatured: filter.isFeatured });
     }
+
     if (filter.status) {
-      query.status = filter.status;
+      conditions.push({ status: filter.status });
     }
+
+    const query = conditions.length > 1 ? { $and: conditions } : conditions[0];
 
     const result = await this.repository.findWithPagination(query, pagination);
     // Cache danh sách sản phẩm 2 phút
