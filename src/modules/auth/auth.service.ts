@@ -670,6 +670,54 @@ export class AuthService {
   return { message: `Revoked ${result.modifiedCount} other active sessions` };
 }
 
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    context?: ClientContext
+  ) {
+    if (!currentPassword || !newPassword) {
+      throw AppError.BadRequest('Current password and new password are required', 'MISSING_FIELDS');
+    }
+
+    if (currentPassword === newPassword) {
+      throw AppError.BadRequest('New password must be different from current password', 'SAME_PASSWORD');
+    }
+
+    const user = await this.repository.findByIdActive(userId);
+    if (!user) {
+      throw AppError.NotFound('User not found', 'USER_NOT_FOUND');
+    }
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      await AuditLogService.record({
+        userId: user._id,
+        email: user.email,
+        action: 'CHANGE_PASSWORD_FAILED',
+        status: 'FAILED',
+        ipAddress: context?.ipAddress,
+        userAgent: context?.userAgent,
+        details: { reason: 'Invalid current password' },
+      });
+      throw AppError.BadRequest('Current password is incorrect', 'INVALID_CURRENT_PASSWORD');
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    await AuditLogService.record({
+      userId: user._id,
+      email: user.email,
+      action: 'CHANGE_PASSWORD_SUCCESS',
+      status: 'SUCCESS',
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+    });
+
+    return { message: 'Password changed successfully' };
+  }
+
   async getAuditLogs(userId: string, limit = 50) {
   return AuditLogService.getUserLogs(userId, limit);
 }

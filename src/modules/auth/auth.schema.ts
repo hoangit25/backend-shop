@@ -70,6 +70,23 @@ export const resetPasswordSchema = z.object({
   body: resetPasswordBodySchema,
 });
 
+export const changePasswordBodySchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z
+    .string()
+    .min(6, 'Password must be at least 6 characters')
+    .max(20, 'Password cannot exceed 20 characters')
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,20}$/,
+      'Password must contain uppercase, lowercase, number, and special character'
+    ),
+});
+
+export const changePasswordSchema = z.object({
+  body: changePasswordBodySchema,
+});
+
 export type ForgotPasswordDto = z.infer<typeof forgotPasswordBodySchema>;
 export type VerifyOtpDto = z.infer<typeof verifyOtpBodySchema>;
 export type ResetPasswordDto = z.infer<typeof resetPasswordBodySchema>;
+export type ChangePasswordDto = z.infer<typeof changePasswordBodySchema>;

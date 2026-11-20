@@ -206,6 +206,22 @@ export class AuthController {
     return ApiResponse.success(res, result, 'Other sessions revoked successfully');
   });
 
+  changePassword = asyncHandler(async (req: Request, res: Response) => {
+    const userId = (req as any).user?._id;
+    if (!userId) {
+      return ApiResponse.message(res, 'User not authenticated', 401);
+    }
+    const { currentPassword, newPassword } = req.body;
+    const context = getClientContext(req);
+    const result = await this.service.changePassword(
+      String(userId),
+      currentPassword,
+      newPassword,
+      context
+    );
+    return ApiResponse.success(res, result, result.message);
+  });
+
   getAuditLogs = asyncHandler(async (req: Request, res: Response) => {
     const userId = (req as any).user?._id;
     const limit = parseInt(req.query.limit as string, 10) || 50;
@@ -223,4 +239,5 @@ export const logoutAll = authController.logoutAll;
 export const getSessions = authController.getSessions;
 export const revokeSession = authController.revokeSession;
 export const revokeAllOtherSessions = authController.revokeAllOtherSessions;
+export const changePassword = authController.changePassword;
 export const getAuditLogs = authController.getAuditLogs;

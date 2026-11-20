@@ -77,74 +77,74 @@ export const verifyToken = async (
 /**
  * Middleware xác minh Access Token HOẶC Refresh Token để phục vụ logout linh hoạt
  */
-// export const verifyAuthForLogout = async (
-//   req: Request,
-//   _res: Response,
-//   next: NextFunction
-// ) => {
-//   try {
-//     const authHeader = req.headers.authorization;
-//     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+export const verifyAuthForLogout = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
 
-//     let userId: string | undefined;
-//     let sessionId: string | undefined;
-//     let jti: string | undefined;
-//     let currentAccessToken: string | undefined;
+    let userId: string | undefined;
+    let sessionId: string | undefined;
+    let jti: string | undefined;
+    let currentAccessToken: string | undefined;
 
-//     // 1. Kiểm tra Access Token nếu có
-//     if (authHeader && authHeader.startsWith('Bearer ')) {
-//       currentAccessToken = authHeader.split(' ')[1];
-//       try {
-//         const decodedAccess = jwtConfig.verifyAccessToken(currentAccessToken);
-//         userId = decodedAccess.id;
-//         sessionId = decodedAccess.sessionId;
-//         jti = decodedAccess.jti;
-//       } catch {
-//         // Nếu Access Token đã hết hạn, vẫn decode an toàn để lấy jti, sessionId và id
-//         const decodedAccess = jwtConfig.decodeAccessToken(currentAccessToken);
-//         if (decodedAccess) {
-//           userId = decodedAccess.id;
-//           sessionId = decodedAccess.sessionId;
-//           jti = decodedAccess.jti;
-//         }
-//       }
-//     }
+    // 1. Kiểm tra Access Token nếu có
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      currentAccessToken = authHeader.split(' ')[1];
+      try {
+        const decodedAccess = jwtConfig.verifyAccessToken(currentAccessToken);
+        userId = decodedAccess.id;
+        sessionId = decodedAccess.sessionId;
+        jti = decodedAccess.jti;
+      } catch {
+        // Nếu Access Token đã hết hạn, vẫn decode an toàn để lấy jti, sessionId và id
+        const decodedAccess = jwtConfig.decodeAccessToken(currentAccessToken);
+        if (decodedAccess) {
+          userId = decodedAccess.id;
+          sessionId = decodedAccess.sessionId;
+          jti = decodedAccess.jti;
+        }
+      }
+    }
 
-//     // 2. Kiểm tra Refresh Token nếu chưa có đủ thông tin hoặc cần xác định Session
-//     if (refreshToken) {
-//       try {
-//         const decodedRefresh = jwtConfig.verifyRefreshToken(refreshToken);
-//         if (!userId) userId = decodedRefresh.id;
-//         if (!sessionId) sessionId = decodedRefresh.sessionId;
-//       } catch {
-//         const decodedRefresh = jwtConfig.decodeRefreshToken(refreshToken);
-//         if (decodedRefresh) {
-//           if (!userId) userId = decodedRefresh.id;
-//           if (!sessionId) sessionId = decodedRefresh.sessionId;
-//         }
-//       }
-//     }
+    // 2. Kiểm tra Refresh Token nếu chưa có đủ thông tin hoặc cần xác định Session
+    if (refreshToken) {
+      try {
+        const decodedRefresh = jwtConfig.verifyRefreshToken(refreshToken);
+        if (!userId) userId = decodedRefresh.id;
+        if (!sessionId) sessionId = decodedRefresh.sessionId;
+      } catch {
+        const decodedRefresh = jwtConfig.decodeRefreshToken(refreshToken);
+        if (decodedRefresh) {
+          if (!userId) userId = decodedRefresh.id;
+          if (!sessionId) sessionId = decodedRefresh.sessionId;
+        }
+      }
+    }
 
-//     // 3. Nếu không xác định được danh tính từ cả hai token
-//     if (!userId && !sessionId && !refreshToken) {
-//       throw AppError.Unauthorized(
-//         'Access token or refresh token is required for logout',
-//         'MISSING_LOGOUT_CREDENTIALS'
-//       );
-//     }
+    // 3. Nếu không xác định được danh tính từ cả hai token
+    if (!userId && !sessionId && !refreshToken) {
+      throw AppError.Unauthorized(
+        'Access token or refresh token is required for logout',
+        'MISSING_LOGOUT_CREDENTIALS'
+      );
+    }
 
-//     // Gán thông tin tìm được vào request
-//     (req as any).logoutContext = {
-//       userId,
-//       sessionId,
-//       jti,
-//       currentAccessToken,
-//       refreshToken,
-//     };
+    // Gán thông tin tìm được vào request
+    (req as any).logoutContext = {
+      userId,
+      sessionId,
+      jti,
+      currentAccessToken,
+      refreshToken,
+    };
 
-//     next();
-//   } catch (error) {
-//     next(error instanceof AppError ? error : error);
-//   }
-// };
+    next();
+  } catch (error) {
+    next(error instanceof AppError ? error : error);
+  }
+};
 
