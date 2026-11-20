@@ -14,7 +14,9 @@ export type AuditAction =
   | 'FORGOT_PASSWORD_REQUEST'
   | 'VERIFY_OTP_SUCCESS'
   | 'VERIFY_OTP_FAILED'
-  | 'RESET_PASSWORD_SUCCESS';
+  | 'RESET_PASSWORD_SUCCESS'
+  | 'CHANGE_PASSWORD_SUCCESS'
+  | 'CHANGE_PASSWORD_FAILED';
 
 export interface IAuditLog extends Document {
   userId?: Types.ObjectId;
