@@ -6,13 +6,14 @@ import {
   createCategorySchema,
   updateCategorySchema,
   getCategoryByIdSchema,
+  getCategoryBySlugSchema,
 } from './category.validation';
 
 const router = Router();
 
 // Public routes
 router.get('/', categoryController.getAllCategories);
-router.get('/:id', validate(getCategoryByIdSchema), categoryController.getCategoryById);
+router.get('/:slug', validate(getCategoryBySlugSchema), categoryController.getCategoryById);
 
 // Protected routes (Admin / Auth required)
 router.post('/', verifyToken, validate(createCategorySchema), categoryController.createCategory);

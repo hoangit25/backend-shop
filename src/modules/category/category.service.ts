@@ -40,8 +40,14 @@ export class CategoryService {
     return categories;
   }
 
-  async getCategoryById(id: string) {
-    const category = await this.repository.findById(id);
+  async getCategoryById(idOrSlug: string) {
+    let category = null;
+    if (Types.ObjectId.isValid(idOrSlug)) {
+      category = await this.repository.findById(idOrSlug);
+    }
+    if (!category) {
+      category = await this.repository.findBySlug(idOrSlug);
+    }
     if (!category || category.deleted) {
       throw AppError.NotFound('Category not found', 'CATEGORY_NOT_FOUND');
     }

@@ -28,6 +28,12 @@ export const updateCategorySchema = z.object({
   }),
 });
 
+export const getCategoryBySlugSchema = z.object({
+  params: z.object({
+    slug: z.string().min(1, 'Category slug is required'),
+  }),
+});
+
 export const getCategoryByIdSchema = z.object({
   params: z.object({
     id: z.string().min(1, 'Category ID is required'),
