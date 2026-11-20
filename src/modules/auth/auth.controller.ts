@@ -14,6 +14,7 @@ const COOKIE_OPTIONS = {
   secure: isProduction,                                      // HTTPS bắt buộc khi sameSite=none
   sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax',  // cross-site cần 'none'; localhost cần 'lax'
   maxAge: 7 * 24 * 60 * 60 * 1000,
+  partitioned: true
 };
 
 function getClientContext(req: Request): ClientContext {
