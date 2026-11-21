@@ -6,6 +6,7 @@ import { inventoryRouter } from '../modules/inventory/inventory.route';
 import { cartRouter } from '../modules/cart/cart.route';
 import { orderRouter } from '../modules/order/order.route';
 import { paymentRouter } from '../modules/payment/payment.route';
+import { bannerRouter } from '../modules/banner/banner.route';
 import { AppError } from '../common/appError';
 import { errorHandler } from '../middlewares/AppError.middleware';
 
@@ -16,6 +17,7 @@ export const indexRouter = (app: Express) => {
   app.use(`${version}/users`, authRouter);
   app.use(`${version}/categories`, categoryRouter);
   app.use(`${version}/products`, productRouter);
+  app.use(`${version}/banners`, bannerRouter);
   app.use(`${version}/inventory`, inventoryRouter);
   app.use(`${version}/cart`, cartRouter);
   app.use(`${version}/orders`, orderRouter);
