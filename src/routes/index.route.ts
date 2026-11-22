@@ -7,6 +7,10 @@ import { cartRouter } from '../modules/cart/cart.route';
 import { orderRouter } from '../modules/order/order.route';
 import { paymentRouter } from '../modules/payment/payment.route';
 import { bannerRouter } from '../modules/banner/banner.route';
+import { adminUserRouter } from '../modules/user/admin-user.route';
+import { adminRoleRouter } from '../modules/role/role.route';
+import { verifyToken } from '../middlewares/authentication.middelware';
+import { requireRoles } from '../middlewares/authorization.middleware';
 import { AppError } from '../common/appError';
 import { errorHandler } from '../middlewares/AppError.middleware';
 
@@ -24,6 +28,20 @@ export const indexRouter = (app: Express) => {
   app.use(`${version}/payments`, paymentRouter);
   // Alias hỗ trợ các URL webhook/return từ VNPay hoặc bên ngoài không có prefix /v1
   app.use('/api/payments', paymentRouter);
+
+  // ── Admin Routes (Protected: Admin & Super-Admin) ──
+  app.use(
+    `${version}/admin/users`,
+    verifyToken,
+    requireRoles('super-admin', 'admin'),
+    adminUserRouter
+  );
+  app.use(
+    `${version}/admin/roles`,
+    verifyToken,
+    requireRoles('super-admin', 'admin'),
+    adminRoleRouter
+  );
 
   // 404 handler for undefined routes
   app.use((req, _res, next) => {
