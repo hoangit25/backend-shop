@@ -1,5 +1,7 @@
 import mongoose, { Schema, Types, Document } from 'mongoose';
 import bcrypt from 'bcrypt';
+import '../role/role.model';
+import '../role/permission.model';
 
 export interface IUser extends Document {
   fullName: string;
