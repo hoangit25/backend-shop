@@ -5,7 +5,8 @@ import * as jwtConfig from '../../config/jwt.config';
 import { AppError } from '../../common/appError';
 import { AuthRepository, authRepository } from './auth.responsitory';
 import SessionModel from './model/session.model';
-import { AuditLogService } from './log/auth.log.service'
+import { AuditLogService } from './log/auth.log.service';
+import RoleModel from '../role/role.model';
 
 export interface ClientContext {
   ipAddress?: string;
@@ -242,8 +243,29 @@ export class AuthService {
       details: { sessionId: session._id, deviceName: session.deviceName, jti },
     });
 
+    // Đảm bảo thông tin roles luôn được populate đầy đủ (name, slug) trước khi trả về
+    if (user.roles && user.roles.length > 0) {
+      const isPopulated = typeof (user.roles[0] as any)?.slug === 'string';
+      if (!isPopulated) {
+        await user.populate({
+          path: 'roles',
+          select: '_id name slug permissions isSystem isActive',
+        });
+      }
+    }
+
     const userObj = user.toObject();
     delete (userObj as any).password;
+
+    // Dự phòng trường hợp populate không ra kết quả (ví dụ ID dạng chuỗi thuần)
+    if (userObj.roles && userObj.roles.length > 0 && typeof (userObj.roles[0] as any)?.slug !== 'string') {
+      const roleDocs = await RoleModel.find({
+        _id: { $in: userObj.roles },
+      }).select('_id name slug permissions isSystem isActive').lean();
+      if (roleDocs && roleDocs.length > 0) {
+        userObj.roles = roleDocs as any;
+      }
+    }
 
     return {
       user: userObj,

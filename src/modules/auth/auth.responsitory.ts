@@ -1,5 +1,7 @@
 import { BaseRepository } from '../../common/base-responsitory';
 import UserModel, { IUser } from '../user/user.model';
+import RoleModel from '../role/role.model';
+import '../role/permission.model';
 
 export class AuthRepository extends BaseRepository<IUser> {
   constructor() {
@@ -7,7 +9,10 @@ export class AuthRepository extends BaseRepository<IUser> {
   }
 
   async findByEmail(email: string) {
-    return this.findOne({ email, deleted: false });
+    return this.model.findOne({ email, deleted: false }).populate({
+      path: 'roles',
+      select: '_id name slug permissions isSystem isActive',
+    });
   }
 
 
