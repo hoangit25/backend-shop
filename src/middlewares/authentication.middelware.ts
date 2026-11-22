@@ -44,10 +44,17 @@ export const verifyToken = async (
       }
     }
 
-    // 3. Kiểm tra User
+    // 3. Kiểm tra User kèm Roles và Permissions
     const user = await UserModel.findOne({
       _id: decoded.id,
       deleted: false,
+    }).populate({
+      path: 'roles',
+      match: { deleted: false, isActive: true },
+      populate: {
+        path: 'permissions',
+        match: { deleted: false, isActive: true },
+      },
     });
 
     if (!user) {
