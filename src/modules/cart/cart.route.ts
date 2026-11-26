@@ -29,7 +29,7 @@ export const optionalAuth = async (req: Request, _res: Response, next: NextFunct
           _id: decoded.id,
           deleted: false,
           isActive: true,
-        });
+        }).populate('roles');
         if (user) {
           (req as any).user = user;
         }
@@ -46,7 +46,7 @@ export const optionalAuth = async (req: Request, _res: Response, next: NextFunct
           _id: decoded.id,
           deleted: false,
           isActive: true,
-        });
+        }).populate('roles');
         if (user) {
           (req as any).user = user;
         }
