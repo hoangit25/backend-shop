@@ -32,6 +32,7 @@ export interface OrderIdentity {
   userId?: string | Types.ObjectId | null;
   guestId?: string | null;
   role?: string;
+  isAdmin?: boolean;
 }
 
 export interface GetOrdersQuery {
@@ -39,9 +40,13 @@ export interface GetOrdersQuery {
   guestId?: string;
   orderStatus?: OrderStatus;
   paymentStatus?: PaymentStatus;
+  paymentMethod?: PaymentMethod | string;
   search?: string;
   page?: number;
   limit?: number;
+  isAdmin?: boolean;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 // Hợp lệ các bước chuyển trạng thái đơn hàng
@@ -401,7 +406,7 @@ export class OrderService {
   }
 
   /**
-   * 5. Lấy danh sách đơn hàng có phân trang và bộ lọc
+   * 5. Lấy danh sách đơn hàng có phân trang và bộ lọc (Dùng chung cho cả Khách hàng và Admin)
    */
   async getOrders(query: GetOrdersQuery) {
     const {
@@ -409,17 +414,30 @@ export class OrderService {
       guestId,
       orderStatus,
       paymentStatus,
+      paymentMethod,
       search,
       page = 1,
       limit = 10,
+      isAdmin = false,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
     } = query;
+
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.max(1, Math.min(100, Number(limit) || 10));
 
     const filter: Record<string, any> = {};
 
-    if (userId) {
+    // Nếu KHÔNG PHẢI là Admin thì BẮT BUỘC chỉ được xem đơn hàng của chính mình
+    if (!isAdmin) {
+      if (userId) {
+        filter.userId = new Types.ObjectId(userId);
+      } else if (guestId) {
+        filter.guestId = guestId.trim();
+      }
+    } else if (userId) {
+      // Nếu là Admin lọc đơn của 1 user cụ thể
       filter.userId = new Types.ObjectId(userId);
-    } else if (guestId) {
-      filter.guestId = guestId.trim();
     }
 
     if (orderStatus) {
@@ -430,34 +448,242 @@ export class OrderService {
       filter.paymentStatus = paymentStatus;
     }
 
-    if (search) {
+    if (paymentMethod) {
+      filter.paymentMethod = paymentMethod.toUpperCase();
+    }
+
+    if (search && search.trim()) {
+      const keyword = search.trim();
       filter.$or = [
-        { orderCode: { $regex: search, $options: 'i' } },
-        { 'shippingAddress.phone': { $regex: search, $options: 'i' } },
-        { 'shippingAddress.fullName': { $regex: search, $options: 'i' } },
+        { orderCode: { $regex: keyword, $options: 'i' } },
+        { 'shippingAddress.phone': { $regex: keyword, $options: 'i' } },
+        { 'shippingAddress.fullName': { $regex: keyword, $options: 'i' } },
+        { 'shippingAddress.email': { $regex: keyword, $options: 'i' } },
       ];
     }
 
-    const skip = (Math.max(1, page) - 1) * limit;
+    const sortOption: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'asc' ? 1 : -1,
+    };
 
-    const [orders, total] = await Promise.all([
+    const skip = (pageNum - 1) * limitNum;
+
+    const [orders, totalItems] = await Promise.all([
       OrderModel.find(filter)
-        .sort({ createdAt: -1 })
+        .sort(sortOption)
         .skip(skip)
-        .limit(limit)
+        .limit(limitNum)
+        .populate('userId', 'fullName email phone avatar')
         .exec(),
       OrderModel.countDocuments(filter),
     ]);
 
+    const totalPages = Math.ceil(totalItems / limitNum) || 1;
+
     return {
       orders,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        totalPages: Math.ceil(total / limit),
+        page: pageNum,
+        limit: limitNum,
+        totalItems,
+        totalPages,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
       },
     };
+  }
+
+  /**
+   * 6. Lấy thống kê tổng quan về đơn hàng & chỉ số người dùng (Dành cho Quản trị viên)
+   */
+  async getOrderStats() {
+    const [facetResult] = await OrderModel.aggregate([
+      {
+        $facet: {
+          // Thống kê đơn hàng và doanh thu
+          orderStats: [
+            {
+              $group: {
+                _id: null,
+                totalOrders: { $sum: 1 },
+                totalRevenue: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $or: [
+                          { $eq: ['$paymentStatus', 'PAID'] },
+                          { $eq: ['$orderStatus', 'DELIVERED'] },
+                        ],
+                      },
+                      '$pricing.totalAmount',
+                      0,
+                    ],
+                  },
+                },
+                pendingOrders: {
+                  $sum: { $cond: [{ $eq: ['$orderStatus', 'PENDING'] }, 1, 0] },
+                },
+                confirmedOrders: {
+                  $sum: { $cond: [{ $eq: ['$orderStatus', 'CONFIRMED'] }, 1, 0] },
+                },
+                processingOrders: {
+                  $sum: { $cond: [{ $eq: ['$orderStatus', 'PROCESSING'] }, 1, 0] },
+                },
+                shippingOrders: {
+                  $sum: { $cond: [{ $eq: ['$orderStatus', 'SHIPPING'] }, 1, 0] },
+                },
+                deliveredOrders: {
+                  $sum: { $cond: [{ $eq: ['$orderStatus', 'DELIVERED'] }, 1, 0] },
+                },
+                cancelledOrders: {
+                  $sum: { $cond: [{ $eq: ['$orderStatus', 'CANCELLED'] }, 1, 0] },
+                },
+                paidOrders: {
+                  $sum: { $cond: [{ $eq: ['$paymentStatus', 'PAID'] }, 1, 0] },
+                },
+                unpaidOrders: {
+                  $sum: { $cond: [{ $eq: ['$paymentStatus', 'PENDING'] }, 1, 0] },
+                },
+                memberOrders: {
+                  $sum: { $cond: [{ $ne: ['$userId', null] }, 1, 0] },
+                },
+                guestOrders: {
+                  $sum: { $cond: [{ $eq: ['$userId', null] }, 1, 0] },
+                },
+              },
+            },
+          ],
+          // Thống kê tập khách hàng và khách hàng quay lại mua (Repeat customers)
+          customerStats: [
+            {
+              $group: {
+                _id: { $ifNull: ['$userId', '$shippingAddress.phone'] },
+                orderCount: { $sum: 1 },
+                totalSpent: { $sum: '$pricing.totalAmount' },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalCustomers: { $sum: 1 },
+                repeatCustomers: {
+                  $sum: { $cond: [{ $gt: ['$orderCount', 1] }, 1, 0] },
+                },
+              },
+            },
+          ],
+          // Top 5 khách hàng chi tiêu nhiều nhất từ data đơn hàng
+          topCustomers: [
+            {
+              $group: {
+                _id: { $ifNull: ['$userId', '$shippingAddress.phone'] },
+                fullName: { $first: '$shippingAddress.fullName' },
+                phone: { $first: '$shippingAddress.phone' },
+                email: { $first: '$shippingAddress.email' },
+                orderCount: { $sum: 1 },
+                totalSpent: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $or: [
+                          { $eq: ['$paymentStatus', 'PAID'] },
+                          { $eq: ['$orderStatus', 'DELIVERED'] },
+                          { $ne: ['$orderStatus', 'CANCELLED'] },
+                        ],
+                      },
+                      '$pricing.totalAmount',
+                      0,
+                    ],
+                  },
+                },
+              },
+            },
+            { $sort: { totalSpent: -1 } },
+            { $limit: 5 },
+          ],
+        },
+      },
+    ]);
+
+    const orderStats = facetResult?.orderStats?.[0] || {};
+    const customerStats = facetResult?.customerStats?.[0] || {};
+    const topCustomers = facetResult?.topCustomers || [];
+
+    const totalOrders = orderStats.totalOrders || 0;
+    const totalRevenue = orderStats.totalRevenue || 0;
+    const totalCustomers = customerStats.totalCustomers || 0;
+    const repeatCustomers = customerStats.repeatCustomers || 0;
+
+    const averageOrderValue = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+    const repeatRate = totalCustomers > 0 ? Math.round((repeatCustomers / totalCustomers) * 100) : 0;
+
+    return {
+      totalOrders,
+      totalRevenue,
+      pendingOrders: orderStats.pendingOrders || 0,
+      confirmedOrders: orderStats.confirmedOrders || 0,
+      processingOrders: orderStats.processingOrders || 0,
+      shippingOrders: orderStats.shippingOrders || 0,
+      deliveredOrders: orderStats.deliveredOrders || 0,
+      cancelledOrders: orderStats.cancelledOrders || 0,
+      paidOrders: orderStats.paidOrders || 0,
+      unpaidOrders: orderStats.unpaidOrders || 0,
+      // Các chỉ số tính từ dữ liệu người dùng
+      totalCustomers,
+      repeatCustomers,
+      repeatRate,
+      averageOrderValue,
+      memberOrders: orderStats.memberOrders || 0,
+      guestOrders: orderStats.guestOrders || 0,
+      topCustomers,
+    };
+  }
+
+  /**
+   * 7. Cập nhật trạng thái thanh toán (PAID / PENDING / FAILED / REFUNDED)
+   */
+  async updatePaymentStatus(
+    orderId: string,
+    newPaymentStatus: PaymentStatus,
+    changedBy?: string | Types.ObjectId,
+    note?: string
+  ): Promise<IOrder> {
+    const order = await OrderModel.findById(orderId);
+    if (!order) {
+      throw AppError.NotFound('Order not found', 'ORDER_NOT_FOUND');
+    }
+
+    const oldStatus = order.paymentStatus;
+    order.paymentStatus = newPaymentStatus;
+
+    if (newPaymentStatus === 'PAID' && !order.paidAt) {
+      order.paidAt = new Date();
+    }
+
+    order.statusHistory.push({
+      status: order.orderStatus,
+      changedAt: new Date(),
+      changedBy: changedBy ? changedBy.toString() : 'ADMIN',
+      note:
+        note ||
+        `Đổi trạng thái thanh toán từ ${oldStatus} sang ${newPaymentStatus}`,
+    });
+
+    await order.save();
+    return order;
+  }
+
+  /**
+   * 8. Xoá đơn hàng (Quản trị viên)
+   */
+  async deleteOrder(orderId: string): Promise<boolean> {
+    const order = await OrderModel.findById(orderId);
+    if (!order) {
+      throw AppError.NotFound('Order not found', 'ORDER_NOT_FOUND');
+    }
+
+    await OrderModel.findByIdAndDelete(orderId);
+    return true;
   }
 }
 
