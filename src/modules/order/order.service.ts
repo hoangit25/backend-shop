@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { AppError } from '../../common/appError';
-import OrderModel, {
+import {
   IOrder,
   IOrderItem,
   IShippingAddress,
@@ -8,6 +8,7 @@ import OrderModel, {
   PaymentMethod,
   PaymentStatus,
 } from './order.model';
+import { OrderRepository, orderRepository } from './order.repository';
 import CartModel from '../cart/cart.model';
 import ProductModel from '../product/models/product.model';
 import ProductVariantModel from '../product/models/product-variant.model';
@@ -47,6 +48,8 @@ export interface GetOrdersQuery {
   isAdmin?: boolean;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+  startDate?: string;
+  endDate?: string;
 }
 
 // Hợp lệ các bước chuyển trạng thái đơn hàng
@@ -61,6 +64,8 @@ const VALID_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 };
 
 export class OrderService {
+  constructor(private repository: OrderRepository = orderRepository) {}
+
   /**
    * Sinh mã đơn hàng ngẫu nhiên, dễ đọc và duy nhất
    * Ví dụ: ORD-M1B8Z3-A7K2
@@ -223,8 +228,8 @@ export class OrderService {
       await cartToUpdate.save();
     }
 
-    // 6. Khởi tạo đơn hàng trong cơ sở dữ liệu
-    const newOrder = new OrderModel({
+    // 6. Khởi tạo đơn hàng trong cơ sở dữ liệu qua repository
+    const newOrder = await this.repository.create({
       orderCode,
       userId: identity.userId ? new Types.ObjectId(identity.userId.toString()) : null,
       guestId: identity.userId ? null : identity.guestId?.trim() || null,
@@ -252,7 +257,6 @@ export class OrderService {
       ],
     });
 
-    await newOrder.save();
     return newOrder;
   }
 
@@ -265,7 +269,7 @@ export class OrderService {
     changedBy?: string | Types.ObjectId,
     note?: string
   ): Promise<IOrder> {
-    const order = await OrderModel.findById(orderId);
+    const order = await this.repository.findById(orderId);
     if (!order) {
       throw AppError.NotFound('Order not found', 'ORDER_NOT_FOUND');
     }
@@ -340,7 +344,7 @@ export class OrderService {
     identity: OrderIdentity,
     reason?: string
   ): Promise<IOrder> {
-    const order = await OrderModel.findById(orderId);
+    const order = await this.repository.findById(orderId);
     if (!order) {
       throw AppError.NotFound('Order not found', 'ORDER_NOT_FOUND');
     }
@@ -376,12 +380,7 @@ export class OrderService {
    * 4. Lấy chi tiết đơn hàng theo ID hoặc OrderCode
    */
   async getOrderById(orderIdentifier: string, identity?: OrderIdentity): Promise<IOrder> {
-    const isObjectId = Types.ObjectId.isValid(orderIdentifier);
-    const filter = isObjectId
-      ? { $or: [{ _id: new Types.ObjectId(orderIdentifier) }, { orderCode: orderIdentifier.toUpperCase() }] }
-      : { orderCode: orderIdentifier.toUpperCase() };
-
-    const order = await OrderModel.findOne(filter).populate('items.productId').exec();
+    const order = await this.repository.findByIdOrCode(orderIdentifier, true);
     if (!order) {
       throw AppError.NotFound('Order not found', 'ORDER_NOT_FOUND');
     }
@@ -394,6 +393,7 @@ export class OrderService {
 
       // Cho phép tra cứu nếu là chủ đơn hàng HOẶC người dùng có mã đơn hàng cụ thể (orderCode bí mật)
       // (Phục vụ cho luồng xác thực sau khi VNPay redirect về trang kết quả thanh toán)
+      const isObjectId = Types.ObjectId.isValid(orderIdentifier);
       const isMatchingOrderCode =
         !isObjectId && order.orderCode.toUpperCase() === orderIdentifier.toUpperCase();
 
@@ -462,21 +462,35 @@ export class OrderService {
       ];
     }
 
+    if (query.startDate || query.endDate) {
+      const dateFilter: Record<string, any> = {};
+      if (query.startDate) {
+        dateFilter.$gte = new Date(query.startDate);
+      }
+      if (query.endDate) {
+        const end = new Date(query.endDate);
+        if (!query.endDate.includes('T')) {
+          end.setHours(23, 59, 59, 999);
+        }
+        dateFilter.$lte = end;
+      }
+      filter.createdAt = dateFilter;
+    }
+
     const sortOption: Record<string, 1 | -1> = {
       [sortBy]: sortOrder === 'asc' ? 1 : -1,
     };
 
     const skip = (pageNum - 1) * limitNum;
 
-    const [orders, totalItems] = await Promise.all([
-      OrderModel.find(filter)
-        .sort(sortOption)
-        .skip(skip)
-        .limit(limitNum)
-        .populate('userId', 'fullName email phone avatar')
-        .exec(),
-      OrderModel.countDocuments(filter),
-    ]);
+    const { orders, totalItems } = await this.repository.findOrdersWithPagination(
+      filter,
+      {
+        skip,
+        limit: limitNum,
+        sort: sortOption,
+      }
+    );
 
     const totalPages = Math.ceil(totalItems / limitNum) || 1;
 
@@ -494,116 +508,25 @@ export class OrderService {
   }
 
   /**
-   * 6. Lấy thống kê tổng quan về đơn hàng & chỉ số người dùng (Dành cho Quản trị viên)
+   * 6. Lấy thống kê tổng quan về đơn hàng & chỉ số người dùng (Dành cho Quản trị viên, hỗ trợ lọc theo ngày)
    */
-  async getOrderStats() {
-    const [facetResult] = await OrderModel.aggregate([
-      {
-        $facet: {
-          // Thống kê đơn hàng và doanh thu
-          orderStats: [
-            {
-              $group: {
-                _id: null,
-                totalOrders: { $sum: 1 },
-                totalRevenue: {
-                  $sum: {
-                    $cond: [
-                      {
-                        $or: [
-                          { $eq: ['$paymentStatus', 'PAID'] },
-                          { $eq: ['$orderStatus', 'DELIVERED'] },
-                        ],
-                      },
-                      '$pricing.totalAmount',
-                      0,
-                    ],
-                  },
-                },
-                pendingOrders: {
-                  $sum: { $cond: [{ $eq: ['$orderStatus', 'PENDING'] }, 1, 0] },
-                },
-                confirmedOrders: {
-                  $sum: { $cond: [{ $eq: ['$orderStatus', 'CONFIRMED'] }, 1, 0] },
-                },
-                processingOrders: {
-                  $sum: { $cond: [{ $eq: ['$orderStatus', 'PROCESSING'] }, 1, 0] },
-                },
-                shippingOrders: {
-                  $sum: { $cond: [{ $eq: ['$orderStatus', 'SHIPPING'] }, 1, 0] },
-                },
-                deliveredOrders: {
-                  $sum: { $cond: [{ $eq: ['$orderStatus', 'DELIVERED'] }, 1, 0] },
-                },
-                cancelledOrders: {
-                  $sum: { $cond: [{ $eq: ['$orderStatus', 'CANCELLED'] }, 1, 0] },
-                },
-                paidOrders: {
-                  $sum: { $cond: [{ $eq: ['$paymentStatus', 'PAID'] }, 1, 0] },
-                },
-                unpaidOrders: {
-                  $sum: { $cond: [{ $eq: ['$paymentStatus', 'PENDING'] }, 1, 0] },
-                },
-                memberOrders: {
-                  $sum: { $cond: [{ $ne: ['$userId', null] }, 1, 0] },
-                },
-                guestOrders: {
-                  $sum: { $cond: [{ $eq: ['$userId', null] }, 1, 0] },
-                },
-              },
-            },
-          ],
-          // Thống kê tập khách hàng và khách hàng quay lại mua (Repeat customers)
-          customerStats: [
-            {
-              $group: {
-                _id: { $ifNull: ['$userId', '$shippingAddress.phone'] },
-                orderCount: { $sum: 1 },
-                totalSpent: { $sum: '$pricing.totalAmount' },
-              },
-            },
-            {
-              $group: {
-                _id: null,
-                totalCustomers: { $sum: 1 },
-                repeatCustomers: {
-                  $sum: { $cond: [{ $gt: ['$orderCount', 1] }, 1, 0] },
-                },
-              },
-            },
-          ],
-          // Top 5 khách hàng chi tiêu nhiều nhất từ data đơn hàng
-          topCustomers: [
-            {
-              $group: {
-                _id: { $ifNull: ['$userId', '$shippingAddress.phone'] },
-                fullName: { $first: '$shippingAddress.fullName' },
-                phone: { $first: '$shippingAddress.phone' },
-                email: { $first: '$shippingAddress.email' },
-                orderCount: { $sum: 1 },
-                totalSpent: {
-                  $sum: {
-                    $cond: [
-                      {
-                        $or: [
-                          { $eq: ['$paymentStatus', 'PAID'] },
-                          { $eq: ['$orderStatus', 'DELIVERED'] },
-                          { $ne: ['$orderStatus', 'CANCELLED'] },
-                        ],
-                      },
-                      '$pricing.totalAmount',
-                      0,
-                    ],
-                  },
-                },
-              },
-            },
-            { $sort: { totalSpent: -1 } },
-            { $limit: 5 },
-          ],
-        },
-      },
-    ]);
+  async getOrderStats(dateRange?: { startDate?: string; endDate?: string }) {
+    let dateFilter: { $gte?: Date; $lte?: Date } | undefined = undefined;
+    if (dateRange?.startDate || dateRange?.endDate) {
+      dateFilter = {};
+      if (dateRange.startDate) {
+        dateFilter.$gte = new Date(dateRange.startDate);
+      }
+      if (dateRange.endDate) {
+        const end = new Date(dateRange.endDate);
+        if (!dateRange.endDate.includes('T')) {
+          end.setHours(23, 59, 59, 999);
+        }
+        dateFilter.$lte = end;
+      }
+    }
+
+    const [facetResult] = await this.repository.aggregateStats(dateFilter);
 
     const orderStats = facetResult?.orderStats?.[0] || {};
     const customerStats = facetResult?.customerStats?.[0] || {};
@@ -648,7 +571,7 @@ export class OrderService {
     changedBy?: string | Types.ObjectId,
     note?: string
   ): Promise<IOrder> {
-    const order = await OrderModel.findById(orderId);
+    const order = await this.repository.findById(orderId);
     if (!order) {
       throw AppError.NotFound('Order not found', 'ORDER_NOT_FOUND');
     }
@@ -677,12 +600,12 @@ export class OrderService {
    * 8. Xoá đơn hàng (Quản trị viên)
    */
   async deleteOrder(orderId: string): Promise<boolean> {
-    const order = await OrderModel.findById(orderId);
+    const order = await this.repository.findById(orderId);
     if (!order) {
       throw AppError.NotFound('Order not found', 'ORDER_NOT_FOUND');
     }
 
-    await OrderModel.findByIdAndDelete(orderId);
+    await this.repository.deleteById(orderId);
     return true;
   }
 }
