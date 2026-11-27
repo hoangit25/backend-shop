@@ -7,6 +7,7 @@ import { cartRouter } from '../modules/cart/cart.route';
 import { orderRouter } from '../modules/order/order.route';
 import { paymentRouter } from '../modules/payment/payment.route';
 import { bannerRouter } from '../modules/banner/banner.route';
+import { statisticsRouter } from '../modules/statistics/statistics.route';
 import { adminUserRouter } from '../modules/user/admin-user.route';
 import { adminRoleRouter } from '../modules/role/role.route';
 import { verifyToken } from '../middlewares/authentication.middelware';
@@ -26,6 +27,7 @@ export const indexRouter = (app: Express) => {
   app.use(`${version}/cart`, cartRouter);
   app.use(`${version}/orders`, orderRouter);
   app.use(`${version}/payments`, paymentRouter);
+  app.use(`${version}/statistics`, statisticsRouter);
   // Alias hỗ trợ các URL webhook/return từ VNPay hoặc bên ngoài không có prefix /v1
   app.use('/api/payments', paymentRouter);
 
