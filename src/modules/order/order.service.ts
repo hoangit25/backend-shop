@@ -406,6 +406,26 @@ export class OrderService {
   }
 
   /**
+   * Chuẩn hóa bộ lọc khoảng ngày (hỗ trợ YYYY-MM-DD theo múi giờ Việt Nam +07:00)
+   */
+  private buildCreatedAtFilter(startDate?: string, endDate?: string): { $gte?: Date; $lte?: Date } | undefined {
+    if (!startDate && !endDate) return undefined;
+
+    const dateFilter: { $gte?: Date; $lte?: Date } = {};
+    if (startDate) {
+      dateFilter.$gte = startDate.includes('T')
+        ? new Date(startDate)
+        : new Date(`${startDate}T00:00:00.000+07:00`);
+    }
+    if (endDate) {
+      dateFilter.$lte = endDate.includes('T')
+        ? new Date(endDate)
+        : new Date(`${endDate}T23:59:59.999+07:00`);
+    }
+    return dateFilter;
+  }
+
+  /**
    * 5. Lấy danh sách đơn hàng có phân trang và bộ lọc (Dùng chung cho cả Khách hàng và Admin)
    */
   async getOrders(query: GetOrdersQuery) {
@@ -462,19 +482,9 @@ export class OrderService {
       ];
     }
 
-    if (query.startDate || query.endDate) {
-      const dateFilter: Record<string, any> = {};
-      if (query.startDate) {
-        dateFilter.$gte = new Date(query.startDate);
-      }
-      if (query.endDate) {
-        const end = new Date(query.endDate);
-        if (!query.endDate.includes('T')) {
-          end.setHours(23, 59, 59, 999);
-        }
-        dateFilter.$lte = end;
-      }
-      filter.createdAt = dateFilter;
+    const createdAtFilter = this.buildCreatedAtFilter(query.startDate, query.endDate);
+    if (createdAtFilter) {
+      filter.createdAt = createdAtFilter;
     }
 
     const sortOption: Record<string, 1 | -1> = {
@@ -511,20 +521,7 @@ export class OrderService {
    * 6. Lấy thống kê tổng quan về đơn hàng & chỉ số người dùng (Dành cho Quản trị viên, hỗ trợ lọc theo ngày)
    */
   async getOrderStats(dateRange?: { startDate?: string; endDate?: string }) {
-    let dateFilter: { $gte?: Date; $lte?: Date } | undefined = undefined;
-    if (dateRange?.startDate || dateRange?.endDate) {
-      dateFilter = {};
-      if (dateRange.startDate) {
-        dateFilter.$gte = new Date(dateRange.startDate);
-      }
-      if (dateRange.endDate) {
-        const end = new Date(dateRange.endDate);
-        if (!dateRange.endDate.includes('T')) {
-          end.setHours(23, 59, 59, 999);
-        }
-        dateFilter.$lte = end;
-      }
-    }
+    const dateFilter = this.buildCreatedAtFilter(dateRange?.startDate, dateRange?.endDate);
 
     const [facetResult] = await this.repository.aggregateStats(dateFilter);
 
